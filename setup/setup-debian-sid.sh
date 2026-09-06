@@ -441,8 +441,28 @@ EOF
     sudo apt update
     sudo apt install -y firefox
 
-    if confirm "¿Instalar también el paquete de idioma español (firefox-l10n-es)?"; then
-      sudo apt install -y firefox-l10n-es
+    # Los paquetes de idioma de Mozilla no usan el código de 2 letras a
+    # secas: van por variante regional (es-es, es-ar, es-mx...), igual
+    # que ya hace Debian con firefox-esr-l10n-*. "firefox-l10n-es" no
+    # existe de verdad; se comprueba en tiempo de ejecución cuál sí,
+    # empezando por la variante de España.
+    FIREFOX_L10N_CANDIDATES=(firefox-l10n-es-es firefox-l10n-es-mx firefox-l10n-es-ar firefox-l10n-es)
+    FIREFOX_L10N_PKG=""
+    for pkg in "${FIREFOX_L10N_CANDIDATES[@]}"; do
+      if apt-cache show "$pkg" >/dev/null 2>&1; then
+        FIREFOX_L10N_PKG="$pkg"
+        break
+      fi
+    done
+
+    if confirm "¿Instalar también el paquete de idioma español${FIREFOX_L10N_PKG:+ ($FIREFOX_L10N_PKG)}?"; then
+      if [[ -n "$FIREFOX_L10N_PKG" ]]; then
+        sudo apt install -y "$FIREFOX_L10N_PKG"
+      else
+        echo "Aviso: no se encontró ningún paquete de idioma español disponible" \
+             "(se probó: ${FIREFOX_L10N_CANDIDATES[*]}). Busca el nombre exacto con:" \
+             "apt-cache search firefox-l10n"
+      fi
     fi
 
     echo "Firefox de Mozilla instalado. Comprueba la versión con: firefox --version"
