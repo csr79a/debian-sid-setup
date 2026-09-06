@@ -43,7 +43,7 @@ bash, cómo dejar `sudo` listo y ejecutar ambos scripts con seguridad.
 
 ## Qué hace cada script
 
-- **`setup/`** — repos deb822 apuntando a `unstable`/`unstable-updates`,
+- **`setup/`** — repos deb822 apuntando solo a `unstable`,
   `apt full-upgrade` opcional, microcode según CPU, paquetes de
   desarrollo/multimedia/sistema, Flathub, zram con tamaño calculado
   automáticamente según tu RAM, y sustitución opcional de Firefox ESR

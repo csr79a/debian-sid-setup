@@ -135,13 +135,15 @@ else
   echo "Escribiendo $SOURCES_FILE ..."
   # Nota: a diferencia de stable, Sid NO tiene suite de seguridad separada
   # (los fixes de seguridad llegan directamente por "unstable") ni suite
-  # de backports (unstable ya es lo más nuevo). "unstable-updates" es la
-  # suite oficial para correcciones puntuales urgentes que se quieren
-  # empujar sin pasar por el proceso normal de subida.
+  # de backports (unstable ya es lo más nuevo). Tampoco existe una suite
+  # real de "unstable-updates" en el archivo de Debian: al ser unstable
+  # la rama rolling, no tiene sentido un canal aparte de actualizaciones
+  # puntuales (ver wiki.debian.org/SourcesList: "not meaningful for the
+  # rolling development version"). Por eso aquí solo se usa "unstable".
   sudo tee "$SOURCES_FILE" >/dev/null <<'EOF'
 Types: deb
 URIs: https://deb.debian.org/debian
-Suites: unstable unstable-updates
+Suites: unstable
 Components: main contrib non-free non-free-firmware
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF

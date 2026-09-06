@@ -37,9 +37,9 @@ instala, aquel quita.
 3. Si detecta contenido activo en el `/etc/apt/sources.list` clásico,
    hace una copia de seguridad y lo comenta, para evitar repos
    duplicados con el nuevo fichero deb822.
-4. Escribe `/etc/apt/sources.list.d/debian.sources` apuntando a
-   `unstable unstable-updates` (sin `-security` ni `-backports`, que no
-   existen en Sid).
+4. Escribe `/etc/apt/sources.list.d/debian.sources` apuntando solo a
+   `unstable` (sin `-security`, `-backports` ni `-updates`: ninguna de
+   esas suites existe de verdad para Sid en el archivo de Debian).
 5. Actualiza índices (`apt update`) y, si confirmas, hace
    `apt full-upgrade`.
 6. Detecta el fabricante de CPU (Intel/AMD) e instala el paquete de
@@ -77,15 +77,17 @@ Formato deb822, en `/etc/apt/sources.list.d/debian.sources`:
 ```
 Types: deb
 URIs: https://deb.debian.org/debian
-Suites: unstable unstable-updates
+Suites: unstable
 Components: main contrib non-free non-free-firmware
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 ```
 
 A diferencia de la versión para Trixie, aquí no hay suites de
-`-security` ni `-backports`: en Sid los fixes de seguridad llegan
-directamente por `unstable`, y `unstable` ya es, por definición, lo más
-nuevo del archivo.
+`-security`, `-backports` ni `-updates`: en Sid los fixes de seguridad
+llegan directamente por `unstable`, `unstable` ya es, por definición, lo
+más nuevo del archivo, y `unstable-updates` no existe como suite real
+(no tiene sentido un canal de actualizaciones puntuales para una rama
+que ya es rolling).
 
 ## Paquetes que instala
 
