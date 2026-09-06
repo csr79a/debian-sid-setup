@@ -139,7 +139,14 @@ if [[ -f "$SOURCES_FILE" ]]; then
   # pasos manuales.
   if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
     echo "Se ha detectado el bug conocido de 'unstable-updates' en $SOURCES_FILE."
-    SOURCES_BACKUP="${SOURCES_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+    # El backup se guarda FUERA de /etc/apt/sources.list.d/, porque apt
+    # escanea esa carpeta en busca de repositorios y, aunque un .bak no
+    # es un fichero de fuentes válido, sigue avisando de su presencia en
+    # cada "apt update". Al guardarlo en /etc/apt/sources-backups/ (que
+    # apt no escanea), el aviso no vuelve a aparecer.
+    SOURCES_BACKUP_DIR="/etc/apt/sources-backups"
+    sudo install -d -m 0755 "$SOURCES_BACKUP_DIR"
+    SOURCES_BACKUP="${SOURCES_BACKUP_DIR}/debian.sources.bak.$(date +%Y%m%d%H%M%S)"
     sudo cp "$SOURCES_FILE" "$SOURCES_BACKUP"
     echo "Copia de seguridad: $SOURCES_BACKUP"
     sudo sed -i -E 's/^(Suites:\s*unstable)\s+unstable-updates\s*$/\1/' "$SOURCES_FILE"
