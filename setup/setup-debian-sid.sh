@@ -130,7 +130,23 @@ if [[ -f "$LEGACY_SOURCES" ]] && grep -qE '^\s*deb(-src)?\s' "$LEGACY_SOURCES"; 
 fi
 
 if [[ -f "$SOURCES_FILE" ]]; then
-  echo "Ya existe $SOURCES_FILE, no se sobrescribe. Revísalo manualmente si hace falta."
+  # Auto-reparación de un bug conocido de versiones anteriores de este
+  # script: "unstable-updates" no es una suite real en el archivo de
+  # Debian (ver wiki.debian.org/SourcesList) y provoca un error 404 en
+  # "apt update". Si el fichero ya existente todavía la incluye, se
+  # corrige automáticamente en vez de solo avisar, para que máquinas ya
+  # instaladas con la versión antigua del script queden arregladas sin
+  # pasos manuales.
+  if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
+    echo "Se ha detectado el bug conocido de 'unstable-updates' en $SOURCES_FILE."
+    SOURCES_BACKUP="${SOURCES_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+    sudo cp "$SOURCES_FILE" "$SOURCES_BACKUP"
+    echo "Copia de seguridad: $SOURCES_BACKUP"
+    sudo sed -i -E 's/^(Suites:\s*unstable)\s+unstable-updates\s*$/\1/' "$SOURCES_FILE"
+    echo "Corregido automáticamente: $SOURCES_FILE ahora solo apunta a 'unstable'."
+  else
+    echo "Ya existe $SOURCES_FILE y no presenta el bug conocido; no se sobrescribe."
+  fi
 else
   echo "Escribiendo $SOURCES_FILE ..."
   # Nota: a diferencia de stable, Sid NO tiene suite de seguridad separada
