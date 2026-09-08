@@ -39,7 +39,9 @@ El script revisa, **grupo por grupo**, un conjunto de paquetes:
    real de la transacción (incluyendo cualquier dependencia que se lleve
    por delante) antes de aplicar nada.
 4. Al final, opcionalmente, ejecuta `apt autoremove` para limpiar
-   paquetes huérfanos que hayan quedado sueltos.
+   paquetes huérfanos que hayan quedado sueltos, y `apt autoclean` para
+   limpiar del caché los `.deb` descargados de versiones que ya no
+   están disponibles en el repositorio.
 
 ## Por qué es un script aparte
 
@@ -83,6 +85,7 @@ chmod +x cleanup-debian-sid.sh
 | Accesibilidad | `kmousetool`, `kmouth`, `kontrast` | Independientes del grupo PIM: **no** se eliminan solos al quitar KMail, por eso van en grupo aparte. |
 | Konqueror | `konqueror` | Navegador/gestor de archivos histórico de KDE, sin relación con los otros grupos. |
 | xterm | `xterm` | Emulador de terminal genérico de X11, no es una app de Plasma ni depende de los grupos anteriores; va en su propio grupo. |
+| KDE Connect | `kdeconnect` | Integra el móvil con el escritorio (notificaciones, compartir archivos, control remoto...). Independiente de todos los grupos anteriores. |
 | ImageMagick (opcional, `--imagemagick`) | `imagemagick` | Ver aviso abajo. |
 
 Los nombres de paquete están verificados contra el repositorio de Debian
