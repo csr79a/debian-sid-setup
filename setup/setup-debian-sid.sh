@@ -351,6 +351,25 @@ else
         echo "Estado actual del zram:"
         zramctl 2>/dev/null || true
         swapon --show 2>/dev/null || true
+
+        # vm.swappiness=60 (valor por defecto) está pensado para swap en
+        # disco: el kernel espera a que la RAM esté casi llena antes de
+        # usarlo, porque mover datos a disco es lento. Con zram, el swap
+        # vive comprimido en la propia RAM y es mucho más rápido, así que
+        # conviene un swappiness más alto (rango habitual recomendado con
+        # zram: 130-180) para que el kernel mande antes las páginas frías
+        # al zram y deje más RAM libre real para caché y procesos activos.
+        SWAPPINESS_VALUE=130
+        SWAPPINESS_CONF="/etc/sysctl.d/99-zram-swappiness.conf"
+        echo
+        if confirm "¿Ajustar vm.swappiness a ${SWAPPINESS_VALUE} (recomendado con zram, por defecto es 60 y está pensado para swap en disco)?"; then
+          echo "vm.swappiness=${SWAPPINESS_VALUE}" | sudo tee "$SWAPPINESS_CONF" >/dev/null
+          sudo sysctl -p "$SWAPPINESS_CONF" >/dev/null
+          echo "Configurado vm.swappiness=${SWAPPINESS_VALUE} de forma persistente en $SWAPPINESS_CONF"
+          echo "Valor activo confirmado: $(sudo sysctl -n vm.swappiness)"
+        else
+          echo "Se omite el ajuste de vm.swappiness (se queda en el valor actual del sistema)."
+        fi
       else
         echo "Aviso: no se reconoció el formato de $ZRAM_CONF. Revísalo a mano:" \
              "https://wiki.debian.org/ZRam"
@@ -510,6 +529,8 @@ Notas generales (igual que en la versión trixie):
       swapon --show
     El tamaño se calculó automáticamente a partir de tu RAM total
     (${TOTAL_RAM_MB:-desconocida} MiB detectados -> ${ZRAM_SIZE_MB:-N/A} MiB de zram).
+    Si además ajustaste vm.swappiness, comprueba el valor activo con:
+      sudo sysctl vm.swappiness
 
   - Si instalaste Firefox desde el repositorio de Mozilla, comprueba
     la versión con: firefox --version (debería ser una versión release,

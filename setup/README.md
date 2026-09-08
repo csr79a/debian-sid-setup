@@ -142,6 +142,17 @@ propuesto, y sigue pidiendo confirmación como el resto de pasos. Si por
 algún motivo no se puede leer `/proc/meminfo`, se omite este paso en vez
 de aplicar un tamaño inválido.
 
+Tras configurar zram, el script también ofrece ajustar `vm.swappiness`
+a **130** (con confirmación aparte). Por defecto el kernel usa `60`, un
+valor pensado para cuando el swap vive en disco: el kernel espera a que
+la RAM esté casi llena antes de usarlo, porque escribir en disco es
+lento. Con zram el "swap" vive comprimido en la propia RAM, mucho más
+rápido, así que conviene un valor más alto (el rango habitual
+recomendado con zram es 130-180) para que el kernel mande antes las
+páginas frías al zram y deje más RAM libre real para caché y procesos
+activos. El ajuste se guarda de forma persistente en
+`/etc/sysctl.d/99-zram-swappiness.conf`.
+
 ## Firefox oficial de Mozilla (opcional)
 
 Debian, incluso en Sid, solo empaqueta `firefox-esr` en su archivo
@@ -156,7 +167,10 @@ oficial. Si aceptas este paso:
 3. Se añade `/etc/apt/sources.list.d/mozilla.sources` (deb822) y un pin
    de prioridad 1000 para que el Firefox de Mozilla tenga preferencia
    sobre cualquier paquete `firefox*` de Debian.
-4. Se instala `firefox` (y opcionalmente `firefox-l10n-es`).
+4. Se instala `firefox` (y opcionalmente el paquete de idioma español,
+   detectado dinámicamente entre `firefox-l10n-es-es`, `firefox-l10n-es-mx`
+   o `firefox-l10n-es-ar`, ya que Mozilla no distribuye un paquete
+   `firefox-l10n-es` a secas — usa variantes regionales).
 
 ## Idempotencia
 
