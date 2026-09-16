@@ -3,8 +3,8 @@
 Elimina aplicaciones de **KDE Plasma** que Debian instala por defecto
 junto a la tarea de escritorio, pero que muchos usuarios no llegan a
 usar (suite PIM/Kontact, algunas herramientas de accesibilidad,
-Konqueror). Es el complemento de `setup-debian-sid.sh`: ese script
-instala, este quita.
+Konqueror, KDE Partition Manager). Es el complemento de
+`setup-debian-sid.sh`: ese script instala, este quita.
 
 Esta lógica no depende del codename ni de si el sistema está en stable
 o en Sid — los nombres de paquete que revisa son los mismos en ambos
@@ -32,16 +32,16 @@ Trixie, solo renombrado para el proyecto de Sid.
 El script revisa, **grupo por grupo**, un conjunto de paquetes:
 
 1. Comprueba qué paquetes de ese grupo están realmente instalados (si
-   ninguno lo está, pasa al siguiente grupo sin preguntar nada).
+ninguno lo está, pasa al siguiente grupo sin preguntar nada).
 2. Te muestra la lista y pide confirmación específica de ese grupo.
 3. Si confirmas, ejecuta `apt remove` (o `apt purge` con `--purge`) —
-   y salvo que uses `-y`, es el propio `apt` quien te enseña el resumen
-   real de la transacción (incluyendo cualquier dependencia que se lleve
-   por delante) antes de aplicar nada.
+y salvo que uses `-y`, es el propio `apt` quien te enseña el resumen
+real de la transacción (incluyendo cualquier dependencia que se lleve
+por delante) antes de aplicar nada.
 4. Al final, opcionalmente, ejecuta `apt autoremove` para limpiar
-   paquetes huérfanos que hayan quedado sueltos, y `apt autoclean` para
-   limpiar del caché los `.deb` descargados de versiones que ya no
-   están disponibles en el repositorio.
+paquetes huérfanos que hayan quedado sueltos, y `apt autoclean` para
+limpiar del caché los `.deb` descargados de versiones que ya no
+están disponibles en el repositorio.
 
 ## Por qué es un script aparte
 
@@ -54,7 +54,7 @@ estas apps. Por eso van separados.
 
 ## Uso
 
-```bash
+```
 chmod +x cleanup-debian-sid.sh
 
 # Modo interactivo (recomendado la primera vez): confirma cada grupo
@@ -73,20 +73,20 @@ chmod +x cleanup-debian-sid.sh
 ./cleanup-debian-sid.sh -h
 ```
 
-> Igual que en `setup-debian-sid.sh`: no lo ejecutes con
-> `curl ... | bash` sin `-y`, porque las confirmaciones necesitan una
+> Igual que en `setup-debian-sid.sh`: no lo ejecutes con `curl ... | bash` sin `-y`, porque las confirmaciones necesitan una
 > entrada de terminal interactiva.
 
 ## Grupos y qué incluye cada uno
 
-| Grupo | Paquetes | Notas |
-|---|---|---|
-| Suite PIM / Kontact | `kmail`, `kaddressbook`, `ktnef`, `kdepim-themeeditors`, `pim-sieve-editor`, `pim-data-exporter`, `korganizer`, `akregator` | Todos comparten árbol de dependencias con Akonadi (calendario y lector de RSS incluidos). `ktnef` es un paquete de transición que hoy en día vive dentro de `kmail`. `kdepim-themeeditors` es el paquete real detrás de "Editor de temas de Contact" **y** "Editor de temas de encabezados de KMail". |
-| Accesibilidad | `kmousetool`, `kmouth`, `kontrast` | Independientes del grupo PIM: **no** se eliminan solos al quitar KMail, por eso van en grupo aparte. |
-| Konqueror | `konqueror` | Navegador/gestor de archivos histórico de KDE, sin relación con los otros grupos. |
-| xterm | `xterm` | Emulador de terminal genérico de X11, no es una app de Plasma ni depende de los grupos anteriores; va en su propio grupo. |
-| KDE Connect | `kdeconnect` | Integra el móvil con el escritorio (notificaciones, compartir archivos, control remoto...). Independiente de todos los grupos anteriores. |
-| ImageMagick (opcional, `--imagemagick`) | `imagemagick` | Ver aviso abajo. |
+| Grupo                                   | Paquetes                                                                                                                    | Notas                                                                                                                                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suite PIM / Kontact                     | `kmail`, `kaddressbook`, `ktnef`, `kdepim-themeeditors`, `pim-sieve-editor`, `pim-data-exporter`, `korganizer`, `akregator` | Todos comparten árbol de dependencias con Akonadi (calendario y lector de RSS incluidos). `ktnef` es un paquete de transición que hoy en día vive dentro de `kmail`. `kdepim-themeeditors` es el paquete real detrás de "Editor de temas de Contact" **y** "Editor de temas de encabezados de KMail". |
+| Accesibilidad                           | `kmousetool`, `kmouth`, `kontrast`                                                                                          | Independientes del grupo PIM: **no** se eliminan solos al quitar KMail, por eso van en grupo aparte.                                                                                                     |
+| Konqueror                               | `konqueror`                                                                                                                 | Navegador/gestor de archivos histórico de KDE, sin relación con los otros grupos.                                                                                                                        |
+| xterm                                   | `xterm`                                                                                                                     | Emulador de terminal genérico de X11, no es una app de Plasma ni depende de los grupos anteriores; va en su propio grupo.                                                                                |
+| KDE Connect                             | `kdeconnect`                                                                                                                | Integra el móvil con el escritorio (notificaciones, compartir archivos, control remoto...). Independiente de todos los grupos anteriores.                                                                |
+| KDE Partition Manager                   | `partitionmanager`                                                                                                          | Se elimina porque `setup-debian-sid.sh` instala GNOME Disk Utility como alternativa. Si `gnome-disk-utility` **no** está instalado, el script te avisa explícitamente antes de confirmar: si sigues adelante, te quedas sin gestor de particiones gráfico. |
+| ImageMagick (opcional, `--imagemagick`) | `imagemagick`                                                                                                               | Ver aviso abajo.                                                                                                                                                                                         |
 
 Los nombres de paquete están verificados contra el repositorio de Debian
 (main); en Sid pueden llegar antes actualizaciones o renombrados de
@@ -103,27 +103,25 @@ Por eso:
 
 - No se evalúa a menos que pases `--imagemagick` explícitamente.
 - Cuando se evalúa, el script primero ejecuta
-  `apt-cache rdepends imagemagick` y te enseña qué depende de él **antes**
-  de pedir confirmación.
+`apt-cache rdepends imagemagick` y te enseña qué depende de él **antes** de pedir confirmación.
 
-Si tienes dudas, dile que no cuando te pregunte y revisa el listado de
-`rdepends` con calma en otro momento.
+Si tienes dudas, dile que no cuando te pregunte y revisa el listado de `rdepends` con calma en otro momento.
 
 ## remove vs. purge
 
 - **`apt remove`** (por defecto): desinstala el paquete pero deja los
-  ficheros de configuración en `/etc` y en tu `$HOME` (por si algún día
-  reinstalas y quieres recuperar tu configuración).
+ficheros de configuración en `/etc` y en tu `$HOME` (por si algún día
+reinstalas y quieres recuperar tu configuración).
 - **`apt purge`** (con `--purge`): además borra esos ficheros de
-  configuración. Solo recomendable si tienes claro que no vas a volver a
-  usar esa app.
+configuración. Solo recomendable si tienes claro que no vas a volver a
+usar esa app.
 
 ## Cómo revertirlo
 
 Si más adelante echas en falta alguna de estas apps, se reinstala como
 cualquier otro paquete:
 
-```bash
+```
 sudo apt install kmail   # o el paquete que corresponda
 ```
 
