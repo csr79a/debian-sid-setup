@@ -5,7 +5,7 @@
 # Script de configuración inicial para Debian Unstable (Sid) con KDE
 # Plasma. Configura los repositorios oficiales (deb822) apuntando a
 # unstable, actualiza el sistema, instala un set de paquetes de
-# desarrollo/multimedia/sistema/utilidades de disco, el microcode
+# desarrollo/multimedia/sistema/utilidades de disco/OCR, el microcode
 # correcto según el fabricante de CPU, fuentes de Windows y de Ubuntu,
 # añade el remoto de Flathub, y ofrece (opcional, tras detectar el
 # hardware) zram, Firefox de Mozilla, el driver NVIDIA y
@@ -32,14 +32,15 @@
 # Uso:
 #   chmod +x setup-debian-sid.sh
 #   ./setup-debian-sid.sh          # modo interactivo (pide confirmación)
-#   ./setup-debian-sid.sh -y       # modo no interactivo (asume "sí" en todo)
+#   ./setup-debian-sid.sh -y       # modo no interactivo (asume "sí" en todo,
+#                                  # incluidas operaciones destructivas; ver --help)
 #
 # Licencia: MIT
 
 set -euo pipefail
 
 TITLE="Configurador de Debian Sid csr79a"
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 log()   { echo -e "\e[1;34m[*]\e[0m $*"; }
 ok()    { echo -e "\e[1;32m[OK]\e[0m $*"; }
@@ -59,8 +60,24 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Uso: $0 [-y|--yes]"
-      echo "  -y, --yes   No pedir confirmación (modo no interactivo, sin pantallas)."
+      cat <<EOF
+Uso: $0 [-y|--yes] [-h|--help]
+
+  -y, --yes   Modo no interactivo (sin pantallas): acepta automáticamente TODAS
+              las preguntas del script, incluidas operaciones destructivas:
+                - comentar el contenido activo de /etc/apt/sources.list (con
+                  copia de seguridad previa);
+                - eliminar Firefox ESR, su configuración (/etc/firefox-esr) y
+                  TODOS sus perfiles y datos (~/.mozilla/firefox), de forma
+                  irreversible;
+                - modificar GRUB, initramfs y otras configuraciones del sistema
+                  (NVIDIA, zram, sysctl...).
+              Las comprobaciones críticas NO se saltan con -y: si los
+              repositorios configurados no son Debian Sid/unstable, el script
+              se detiene.
+
+  -h, --help  Muestra esta ayuda.
+EOF
       exit 0
       ;;
     *)
@@ -84,65 +101,6 @@ confirm() {
   whiptail --title "$TITLE" --yesno "$prompt" "$height" "$width"
 }
 
-info_screen() {
-  local prompt="$1"
-  local height="${2:-14}"
-  local width="${3:-70}"
-  if [[ "$ASSUME_YES" -eq 1 ]]; then
-    return 0
-  fi
-  whiptail --title "$TITLE" --msgbox "$prompt" "$height" "$width"
-}
-
-# _cleanup_profiles_ini <ruta a profiles.ini> <nombre_carpeta1> [nombre_carpeta2 ...]
-#
-# Quita del profiles.ini de Firefox cualquier bloque [ProfileN] cuyo
-# "Path=" coincida con alguno de los nombres de carpeta pasados (solo
-# el nombre base, no la ruta completa). No toca [General] ni los
-# bloques [InstallXXXX] (el mecanismo moderno de Firefox para decidir
-# el perfil por defecto de cada instalación), que deben conservarse
-# intactos. Guarda una copia del archivo original en profiles.ini.bak
-# antes de tocarlo.
-_cleanup_profiles_ini() {
-  local ini_file="$1"; shift
-  local -a removed_names=("$@")
-  [[ -f "$ini_file" ]] || return 0
-  [[ ${#removed_names[@]} -gt 0 ]] || return 0
-
-  local pattern
-  pattern="$(printf '%s\n' "${removed_names[@]}" | paste -sd'|')"
-
-  cp -- "$ini_file" "${ini_file}.bak"
-
-  awk -v pat="$pattern" '
-    function flush() {
-      if (block != "") {
-        if (is_profile && matched) {
-          # bloque de perfil eliminado: se omite
-        } else {
-          printf "%s", block
-        }
-      }
-      block = ""; is_profile = 0; matched = 0
-    }
-    BEGIN { block = ""; is_profile = 0; matched = 0 }
-    /^\[/ {
-      flush()
-      is_profile = ($0 ~ /^\[Profile[0-9]+\]/)
-    }
-    {
-      block = block $0 "\n"
-      if (is_profile && $0 ~ ("^Path=(" pat ")$")) {
-        matched = 1
-      }
-    }
-    END { flush() }
-  ' "$ini_file" > "${ini_file}.tmp"
-
-  mv -- "${ini_file}.tmp" "$ini_file"
-  ok "profiles.ini actualizado (se eliminaron bloques de perfil obsoletos). Copia previa: ${ini_file}.bak"
-}
-
 # Con -y también evitamos que apt/debconf se queden esperando input
 # (p. ej. avisos de licencia de firmware/fuentes no libres). OJO: esto
 # silencia TODOS los prompts de debconf durante la instalación, no solo
@@ -150,6 +108,11 @@ _cleanup_profiles_ini() {
 # explícito.
 if [[ "$ASSUME_YES" -eq 1 ]]; then
   export DEBIAN_FRONTEND=noninteractive
+  warn "MODO -y ACTIVO: se aceptarán automáticamente TODAS las preguntas, incluidas operaciones destructivas:"
+  warn "  - comentar el contenido activo de /etc/apt/sources.list (con copia de seguridad);"
+  warn "  - eliminar Firefox ESR, /etc/firefox-esr y TODOS los perfiles y datos de ESR (irreversible);"
+  warn "  - modificar GRUB, initramfs y otras configuraciones del sistema (NVIDIA, zram, sysctl)."
+  warn "Las comprobaciones críticas siguen activas: si los repositorios no son Sid/unstable, el script se detiene."
 fi
 
 # ----------------------------------------------------------------------
@@ -215,7 +178,7 @@ esac
 # Pantalla de bienvenida
 # ----------------------------------------------------------------------
 
-confirm "Versión del Configurador de Debian Sid csr79a ${VERSION}\n\nEste programa configura los repositorios oficiales, actualiza el sistema, instala un set de paquetes de desarrollo/multimedia/sistema/utilidades de disco, fuentes de Windows y de Ubuntu, y ofrece de forma opcional zram, Firefox de Mozilla, driver NVIDIA y switcheroo-control según el hardware detectado.\n\nCPU detectada: ${CPU_MODEL_NAME}\n\nRecuerda: Sid es la rama de desarrollo de Debian, en movimiento constante. No es apta para sistemas críticos.\n\n¿Desea continuar?" 20 76 || exit 0
+confirm "Versión del Configurador de Debian Sid csr79a ${VERSION}\n\nEste programa configura los repositorios oficiales, actualiza el sistema, instala un set de paquetes de desarrollo/multimedia/sistema/utilidades de disco/OCR, fuentes de Windows y de Ubuntu, y ofrece de forma opcional zram, Firefox de Mozilla, driver NVIDIA y switcheroo-control según el hardware detectado.\n\nCPU detectada: ${CPU_MODEL_NAME}\n\nRecuerda: Sid es la rama de desarrollo de Debian, en movimiento constante. No es apta para sistemas críticos.\n\n¿Desea continuar?" 20 76 || exit 0
 
 # En Sid, VERSION_CODENAME en /etc/os-release NO siempre es fiable:
 # históricamente ha llegado a venir vacío o con un valor de una rama
@@ -237,7 +200,144 @@ fi
 # ----------------------------------------------------------------------
 
 LEGACY_SOURCES="/etc/apt/sources.list"
-SOURCES_FILE="/etc/apt/sources.list.d/debian.sources"
+SOURCES_DIR="/etc/apt/sources.list.d"
+SOURCES_FILE="$SOURCES_DIR/debian.sources"
+
+# ----------------------------------------------------------------------
+# 2a. Comprobación de suites: este script SOLO trabaja con Sid
+# ----------------------------------------------------------------------
+#
+# Se comprueban debian.sources, /etc/apt/sources.list y el resto de
+# ficheros *.sources y *.list de /etc/apt/sources.list.d que apunten a Debian.
+# Solo se aceptan las suites "unstable" y "sid". Cualquier otra (forky,
+# trixie, trixie-security, bookworm, testing, stable...) detiene el
+# script ANTES de continuar con apt update/full-upgrade, y también con
+# -y: es una comprobación de seguridad, no una pregunta que se pueda
+# aceptar automáticamente. El script no convierte esas suites a Sid.
+
+# Suites de $SOURCES_FILE que no son unstable ni sid (una por línea).
+sources_file_bad_suites() {
+  awk '/^Suites:/ { for (i = 2; i <= NF; i++) if ($i != "unstable" && $i != "sid") print $i }' "$SOURCES_FILE" | sort -u
+}
+
+# Líneas activas de $LEGACY_SOURCES que apuntan a un repositorio de Debian
+# con una suite distinta de unstable/sid. Las entradas de cdrom: se
+# ignoran (son inofensivas y este script las comenta más abajo).
+legacy_bad_lines() {
+  awk '
+    /^[[:space:]]*deb(-src)?[[:space:]]/ {
+      line = $0
+      sub(/^[[:space:]]*deb(-src)?[[:space:]]+/, "", line)
+      if (line ~ /^\[/) sub(/^\[[^]]*\][[:space:]]*/, "", line)
+      split(line, f, /[[:space:]]+/)
+      if (f[1] ~ /^cdrom:/) next
+      if (tolower(f[1]) !~ /debian/) next
+      if (f[2] != "unstable" && f[2] != "sid") print $0
+    }' "$LEGACY_SOURCES"
+}
+
+# Entradas de OTROS ficheros de $SOURCES_DIR (*.sources y *.list, además de
+# debian.sources) que apuntan al archivo de Debian con una suite distinta de
+# unstable/sid. Una entrada se considera "de Debian" si su URI es de
+# debian.org o si usa debian-archive-keyring como clave; así no se marcan
+# repositorios de terceros (Docker, Brave...) aunque usen nombres de suite
+# parecidos. Se ignoran las entradas con "Enabled: no".
+# Limitación: un mirror con dominio propio y sin debian-archive-keyring no se
+# reconoce como Debian.
+other_sources_bad_entries() {
+  local f
+  for f in "$SOURCES_DIR"/*.sources "$SOURCES_DIR"/*.list; do
+    [[ -f "$f" && "$f" != "$SOURCES_FILE" ]] || continue
+    case "$f" in
+      *.sources)
+        awk -v file="$f" '
+          function flush(   j) {
+            if (n > 0 && enabled && isdeb)
+              for (j = 1; j <= n; j++)
+                if (suites[j] != "unstable" && suites[j] != "sid") print file ": Suites: " suites[j]
+            n = 0; enabled = 1; isdeb = 0
+          }
+          BEGIN { enabled = 1 }
+          /^[[:space:]]*$/ { flush(); next }
+          /^#/ { next }
+          /^URIs:/ { if (tolower($0) ~ /[\/.]debian\.org(\/|[[:space:]]|$)/) isdeb = 1 }
+          /^Signed-By:/ { if ($0 ~ /debian-archive-keyring/) isdeb = 1 }
+          /^Enabled:/ { if (tolower($2) == "no" || tolower($2) == "false") enabled = 0 }
+          /^Suites:/ { for (k = 2; k <= NF; k++) suites[++n] = $k }
+          END { flush() }
+        ' "$f"
+        ;;
+      *.list)
+        awk -v file="$f" '
+          /^[[:space:]]*deb(-src)?[[:space:]]/ {
+            line = $0; opts = ""
+            sub(/^[[:space:]]*deb(-src)?[[:space:]]+/, "", line)
+            if (line ~ /^\[/) { opts = line; sub(/\].*$/, "]", opts); sub(/^\[[^]]*\][[:space:]]*/, "", line) }
+            split(line, f2, /[[:space:]]+/)
+            if (f2[1] ~ /^cdrom:/) next
+            isdeb = (tolower(f2[1]) ~ /[\/.]debian\.org(\/|$)/) || (opts ~ /debian-archive-keyring/)
+            if (isdeb && f2[2] != "unstable" && f2[2] != "sid") print file ": " $0
+          }
+        ' "$f"
+        ;;
+    esac
+  done
+}
+
+if [[ -f "$SOURCES_FILE" ]]; then
+  # Auto-reparación de un bug conocido de versiones anteriores de este
+  # script: "unstable-updates" no es una suite real en el archivo de
+  # Debian (ver wiki.debian.org/SourcesList) y provoca un error 404 en
+  # "apt update". Si el fichero ya existente todavía la incluye (de una
+  # ejecución anterior de una versión antigua del script), se corrige
+  # automáticamente antes de comprobar las suites.
+  if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
+    warn "Se ha detectado el bug conocido de 'unstable-updates' en $SOURCES_FILE."
+    SOURCES_BACKUP_DIR="/etc/apt/sources-backups"
+    sudo install -d -m 0755 "$SOURCES_BACKUP_DIR"
+    SOURCES_BACKUP="${SOURCES_BACKUP_DIR}/debian.sources.bak.$(date +%Y%m%d%H%M%S)"
+    sudo cp "$SOURCES_FILE" "$SOURCES_BACKUP"
+    ok "Copia de seguridad: $SOURCES_BACKUP"
+    sudo sed -i -E 's/^(Suites:\s*unstable)\s+unstable-updates\s*$/\1/' "$SOURCES_FILE"
+    if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
+      warn "No se ha podido corregir 'unstable-updates' automáticamente en $SOURCES_FILE."
+    else
+      ok "Corregido automáticamente: $SOURCES_FILE ahora solo apunta a 'unstable'."
+    fi
+  fi
+
+  if [[ -z "$(awk '/^Suites:/ { print $2 }' "$SOURCES_FILE")" ]]; then
+    error "No se encontró ninguna línea 'Suites:' en $SOURCES_FILE, así que no se puede comprobar que los repositorios apunten a unstable/sid. Revisa el fichero y vuelve a ejecutar el script."
+  fi
+
+  SOURCES_BAD_SUITES="$(sources_file_bad_suites)"
+  if [[ -n "$SOURCES_BAD_SUITES" ]]; then
+    warn "$SOURCES_FILE contiene suites que no son unstable/sid:"
+    sed 's/^/      · /' <<<"$SOURCES_BAD_SUITES"
+    error "Este script solo trabaja con Debian Sid (unstable) y no convierte otras suites automáticamente (tampoco con -y). Ajusta $SOURCES_FILE a mano (Suites: unstable) y vuelve a ejecutar el script."
+  fi
+  ok "$SOURCES_FILE ya existe y solo apunta a unstable/sid; no se sobrescribe."
+fi
+
+if [[ -f "$LEGACY_SOURCES" ]]; then
+  LEGACY_BAD_LINES="$(legacy_bad_lines)"
+  if [[ -n "$LEGACY_BAD_LINES" ]]; then
+    warn "$LEGACY_SOURCES contiene repositorios activos de Debian que no apuntan a unstable/sid:"
+    sed 's/^/      · /' <<<"$LEGACY_BAD_LINES"
+    error "Este script solo trabaja con Debian Sid (unstable) y no convierte otras suites automáticamente (tampoco con -y). Corrige o comenta esas líneas a mano y vuelve a ejecutar el script."
+  fi
+fi
+
+OTHER_BAD_ENTRIES="$(other_sources_bad_entries)"
+if [[ -n "$OTHER_BAD_ENTRIES" ]]; then
+  warn "Hay otros ficheros en $SOURCES_DIR con repositorios de Debian que no apuntan a unstable/sid:"
+  sed 's/^/      · /' <<<"$OTHER_BAD_ENTRIES"
+  error "Este script solo trabaja con Debian Sid (unstable) y no convierte otras suites automáticamente (tampoco con -y). Corrige o desactiva esas entradas a mano y vuelve a ejecutar el script."
+fi
+
+# ----------------------------------------------------------------------
+# 2b. Limpieza de /etc/apt/sources.list y 2c. escritura de debian.sources
+# ----------------------------------------------------------------------
 
 if [[ -f "$LEGACY_SOURCES" ]] && grep -qE '^\s*deb(-src)?\s' "$LEGACY_SOURCES"; then
   if confirm "Se ha detectado contenido activo en $LEGACY_SOURCES (típico de una instalación desde la ISO oficial, a veces con una entrada de CD-ROM).\n\nPara evitar repositorios duplicados, se comentará su contenido, dejando que $SOURCES_FILE (creado a continuación) sea la única fuente de los repos oficiales de Debian.\n\n¿Continuar? (se guarda una copia de seguridad antes de tocar nada)" 16 76; then
@@ -251,37 +351,7 @@ if [[ -f "$LEGACY_SOURCES" ]] && grep -qE '^\s*deb(-src)?\s' "$LEGACY_SOURCES"; 
   fi
 fi
 
-if [[ -f "$SOURCES_FILE" ]]; then
-  # Auto-reparación de un bug conocido de versiones anteriores de este
-  # script: "unstable-updates" no es una suite real en el archivo de
-  # Debian (ver wiki.debian.org/SourcesList) y provoca un error 404 en
-  # "apt update". Si el fichero ya existente todavía la incluye (de una
-  # ejecución anterior de una versión antigua del script), se corrige
-  # automáticamente en vez de solo avisar. También se detecta si ha
-  # quedado una suite de otra rama (testing/trixie) de una ejecución
-  # anterior de otro script de este mismo proyecto sobre la misma
-  # máquina.
-  if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
-    warn "Se ha detectado el bug conocido de 'unstable-updates' en $SOURCES_FILE."
-    SOURCES_BACKUP_DIR="/etc/apt/sources-backups"
-    sudo install -d -m 0755 "$SOURCES_BACKUP_DIR"
-    SOURCES_BACKUP="${SOURCES_BACKUP_DIR}/debian.sources.bak.$(date +%Y%m%d%H%M%S)"
-    sudo cp "$SOURCES_FILE" "$SOURCES_BACKUP"
-    ok "Copia de seguridad: $SOURCES_BACKUP"
-    sudo sed -i -E 's/^(Suites:\s*unstable)\s+unstable-updates\s*$/\1/' "$SOURCES_FILE"
-    ok "Corregido automáticamente: $SOURCES_FILE ahora solo apunta a 'unstable'."
-  elif grep -qE '^Suites:.*(testing|trixie)' "$SOURCES_FILE"; then
-    warn "Se ha detectado una suite de 'testing'/'trixie' en $SOURCES_FILE, de una configuración anterior."
-    SOURCES_BACKUP_DIR="/etc/apt/sources-backups"
-    sudo install -d -m 0755 "$SOURCES_BACKUP_DIR"
-    SOURCES_BACKUP="${SOURCES_BACKUP_DIR}/debian.sources.bak.$(date +%Y%m%d%H%M%S)"
-    sudo cp "$SOURCES_FILE" "$SOURCES_BACKUP"
-    ok "Copia de seguridad: $SOURCES_BACKUP"
-    warn "Revisa manualmente $SOURCES_FILE antes de continuar; no se sobrescribe automáticamente."
-  else
-    warn "Ya existe $SOURCES_FILE, no se sobrescribe. Revísalo manualmente si hace falta."
-  fi
-else
+if [[ ! -f "$SOURCES_FILE" ]]; then
   log "Escribiendo $SOURCES_FILE ..."
   # A diferencia de stable/testing, Sid NO tiene suite de seguridad
   # separada (los fixes llegan directamente por "unstable", vía sus
@@ -302,14 +372,32 @@ EOF
 fi
 
 log "Actualizando índices de paquetes..."
-sudo apt update
+if ! sudo apt update; then
+  warn "'apt update' terminó con errores (puede ser un repositorio concreto o la red). Se continúa con los índices disponibles."
+fi
 
 # En Sid el full-upgrade NO es un paso puntual como en testing/trixie:
 # es la forma normal y necesaria de mantener el sistema. Se pregunta
 # igualmente por consistencia con el resto del script, pero tenlo
 # presente para el uso diario (ejecútalo con frecuencia, no solo aquí).
+FULL_UPGRADE_FAILED=0
 if confirm "En Sid, 'apt full-upgrade' no es un paso puntual: es la forma normal de mantener el sistema al día. Conviene ejecutarlo con frecuencia, no solo ahora.\n\n¿Quieres hacer 'apt full-upgrade' antes de continuar?" 14 76; then
-  sudo apt full-upgrade -y
+  if sudo apt full-upgrade -y; then
+    ok "apt full-upgrade completado."
+  else
+    FULL_UPGRADE_FAILED=1
+    warn "'apt full-upgrade' ha fallado (en Sid suele deberse a una transición de paquetes en curso o a dependencias temporalmente rotas)."
+    # Solo se continúa si dpkg no ha quedado en un estado inconsistente:
+    # instalar paquetes o compilar módulos DKMS sobre un sistema a medio
+    # actualizar podría empeorarlo.
+    DPKG_AUDIT="$(sudo dpkg --audit 2>&1 || true)"
+    if [[ -n "$DPKG_AUDIT" ]]; then
+      warn "dpkg ha detectado paquetes en un estado inconsistente:"
+      echo "$DPKG_AUDIT"
+      error "No es seguro continuar. Resuelve el problema (por ejemplo con 'sudo dpkg --configure -a' y 'sudo apt -f install') y vuelve a ejecutar el script."
+    fi
+    warn "dpkg está consistente: se continúa con el resto del script. Al terminar, resuelve y reintenta: sudo apt update && sudo apt full-upgrade"
+  fi
 else
   warn "Se omite full-upgrade. Puedes ejecutarlo luego con: sudo apt full-upgrade"
 fi
@@ -326,10 +414,10 @@ fi
 # "apt install", en vez de un único comando con los ~25 paquetes juntos.
 # Con "set -e" activo, un solo paquete roto/en tránsito (algo frecuente
 # en Sid durante transiciones de librerías) haría abortar TODO el
-# script de golpe -- y a esta altura ya se cambiaron los repos a
+# script de golpe -- y a estas alturas ya se cambiaron los repos a
 # unstable y se corrió full-upgrade, así que un aborto total dejaría el
 # sistema a mitad de camino sin fuentes/Flathub/zram/Firefox/NVIDIA. Al
-# instalar por grupos con su propio chequeo de resultado, un fallo
+# instalar por grupos con su propia comprobación de resultado, un fallo
 # puntual solo omite ESE grupo (se avisa cuál y con qué paquetes) y el
 # resto de la instalación sigue igual.
 
@@ -340,7 +428,7 @@ else
   ARCHIVE_PACKAGES=(unzip zip p7zip-full)
 fi
 
-# Dos arrays paralelos (incides deben corresponderse 1 a 1): nombre
+# Dos arrays paralelos (los índices deben corresponderse 1 a 1): nombre
 # descriptivo del grupo y string con sus paquetes separados por espacio.
 GROUP_NAMES=(
   "Control de versiones / descargas"
@@ -352,6 +440,7 @@ GROUP_NAMES=(
   "Firmware"
   "Gestión de paquetes (GUI)"
   "Flatpak + integración KDE"
+  "OCR (extracción de texto de capturas)"
 )
 
 GROUP_PACKAGES=(
@@ -362,8 +451,11 @@ GROUP_PACKAGES=(
   "build-essential gcc g++ make cmake ninja-build pkg-config autoconf automake libtool openssh-client"
   "ffmpeg gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly pavucontrol"
   "firmware-linux"
-  "synaptic gdebi"
+  "synaptic"
   "flatpak plasma-discover-backend-flatpak"
+  # OCR para extraer texto de las capturas de pantalla (Spectacle):
+  # motor Tesseract con datos de inglés, español y detección de orientación.
+  "tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa tesseract-ocr-osd"
 )
 
 if [[ -n "$MICROCODE_PKG" ]]; then
@@ -382,7 +474,7 @@ echo
 echo "Se van a instalar los siguientes paquetes (agrupados en ${#GROUP_NAMES[@]} bloques):"
 printf '  - %s\n' "${ALL_PACKAGES[@]}"
 echo
-confirm "Se van a instalar ${#ALL_PACKAGES[@]} paquetes (desarrollo, multimedia, sistema, utilidades de disco), en ${#GROUP_NAMES[@]} bloques independientes. Si alguno falla (típico en Sid durante transiciones de paquetes), se avisa y se continúa con el resto en vez de abortar toda la instalación.\n\n¿Continuar con la instalación?" || { warn "Instalación cancelada por el usuario."; exit 0; }
+confirm "Se van a instalar ${#ALL_PACKAGES[@]} paquetes (desarrollo, multimedia, sistema, utilidades de disco, OCR), en ${#GROUP_NAMES[@]} bloques independientes. Si alguno falla (típico en Sid durante transiciones de paquetes), se avisa y se continúa con el resto en vez de abortar toda la instalación.\n\n¿Continuar con la instalación?" || { warn "Instalación cancelada por el usuario."; exit 0; }
 
 FAILED_GROUPS=()
 for i in "${!GROUP_NAMES[@]}"; do
@@ -394,14 +486,44 @@ for i in "${!GROUP_NAMES[@]}"; do
     ok "${group_name}: instalado correctamente."
   else
     warn "${group_name}: FALLÓ la instalación de este grupo (${group_pkgs[*]})."
-    warn "Se continúa con el resto del script; podés reintentar este grupo a mano luego con: sudo apt install ${group_pkgs[*]}"
+    warn "Se continúa con el resto del script; puedes reintentar este grupo a mano luego con: sudo apt install ${group_pkgs[*]}"
     FAILED_GROUPS+=("$group_name")
   fi
 done
 
 if [[ ${#FAILED_GROUPS[@]} -gt 0 ]]; then
   warn "Grupos que fallaron y se omitieron: ${FAILED_GROUPS[*]}"
-  warn "El resto de los pasos (fuentes, Flathub, zram, Firefox, NVIDIA) no dependen de estos paquetes y continúan igual."
+  warn "El resto de los pasos continúa. Los que necesitan un paquete de un grupo fallido (wget, flatpak, lspci) lo reintentan o se omiten con aviso."
+fi
+
+# ----------------------------------------------------------------------
+# 3b. Prerrequisitos de los pasos siguientes
+# ----------------------------------------------------------------------
+#
+# Firefox y NVIDIA usan wget (grupo "Control de versiones / descargas") y
+# la detección de GPU usa lspci (pciutils, grupo "Sistema / diagnóstico").
+# Si ese grupo falló, se reintenta instalar solo lo imprescindible; si aun
+# así no está disponible, el paso que lo necesite se omite con un aviso en
+# vez de abortar el script entero por "set -e".
+
+# ensure_cmd <comando> <paquete>: devuelve 0 si el comando existe (o se ha
+# podido instalar) y 1 si no.
+ensure_cmd() {
+  local cmd="$1" pkg="$2"
+  if command -v "$cmd" >/dev/null 2>&1; then
+    return 0
+  fi
+  warn "No se encontró '$cmd'; se intenta instalar '$pkg'..."
+  if sudo apt install -y "$pkg" && command -v "$cmd" >/dev/null 2>&1; then
+    return 0
+  fi
+  warn "No se pudo instalar '$pkg'."
+  return 1
+}
+
+WGET_OK=0
+if ensure_cmd wget wget; then
+  WGET_OK=1
 fi
 
 # ----------------------------------------------------------------------
@@ -423,15 +545,21 @@ if confirm "¿Instalar fuentes de Windows (Arial, Times New Roman, Courier New..
   if [[ "$ASSUME_YES" -eq 1 ]]; then
     echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | sudo debconf-set-selections
   fi
-  sudo apt install -y ttf-mscorefonts-installer
-  ok "Fuentes de Windows instaladas."
+  if sudo apt install -y ttf-mscorefonts-installer; then
+    ok "Fuentes de Windows instaladas."
+  else
+    warn "No se pudieron instalar las fuentes de Windows (el paquete las descarga de servidores externos, que a veces fallan). Se continúa; reintenta luego con: sudo apt install ttf-mscorefonts-installer"
+  fi
 else
   warn "Se omiten las fuentes de Windows."
 fi
 
 if confirm "¿Instalar las fuentes de Ubuntu (fonts-ubuntu)?"; then
-  sudo apt install -y fonts-ubuntu
-  ok "Fuentes de Ubuntu instaladas."
+  if sudo apt install -y fonts-ubuntu; then
+    ok "Fuentes de Ubuntu instaladas."
+  else
+    warn "No se pudieron instalar las fuentes de Ubuntu. Se continúa; reintenta luego con: sudo apt install fonts-ubuntu"
+  fi
 else
   warn "Se omiten las fuentes de Ubuntu."
 fi
@@ -440,11 +568,16 @@ fi
 # 5. Flathub
 # ----------------------------------------------------------------------
 
-if ! flatpak remote-list | grep -q '^flathub'; then
-  log "Añadiendo el remoto de Flathub..."
-  flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+if command -v flatpak >/dev/null 2>&1; then
+  FLATPAK_REMOTES="$(flatpak remote-list --columns=name 2>/dev/null || true)"
+  if ! grep -qx 'flathub' <<<"$FLATPAK_REMOTES"; then
+    log "Añadiendo el remoto de Flathub..."
+    sudo flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+  else
+    ok "El remoto de Flathub ya está configurado."
+  fi
 else
-  ok "El remoto de Flathub ya está configurado."
+  warn "Flatpak no está instalado (el grupo 'Flatpak + integración KDE' no se instaló); se omite la configuración de Flathub."
 fi
 
 # ----------------------------------------------------------------------
@@ -459,16 +592,21 @@ if [[ -z "$TOTAL_RAM_KB" || "$ZRAM_SIZE_MB" -le 0 ]]; then
   warn "No se ha podido determinar la RAM total del sistema; se omite la configuración de zram."
 else
   if confirm "RAM total detectada: ${TOTAL_RAM_MB} MiB.\n\n¿Configurar zram (swap comprimido en RAM) con ${ZRAM_SIZE_MB} MiB (mitad de la RAM)?" 14 70; then
+    ZRAM_TOOLS_OK=1
     if ! dpkg -s zram-tools >/dev/null 2>&1; then
       log "Instalando zram-tools..."
-      sudo apt install -y zram-tools
+      if ! sudo apt install -y zram-tools; then
+        ZRAM_TOOLS_OK=0
+      fi
     else
       ok "zram-tools ya está instalado."
     fi
 
     ZRAM_CONF="/etc/default/zramswap"
 
-    if [[ -f "$ZRAM_CONF" ]]; then
+    if [[ "$ZRAM_TOOLS_OK" -ne 1 ]]; then
+      warn "No se pudo instalar zram-tools; se omite la configuración de zram. Reintenta luego con: sudo apt install zram-tools"
+    elif [[ -f "$ZRAM_CONF" ]]; then
       ZRAM_BACKUP="${ZRAM_CONF}.bak.$(date +%Y%m%d%H%M%S)"
       sudo cp "$ZRAM_CONF" "$ZRAM_BACKUP"
       ok "Copia de seguridad de la configuración previa: $ZRAM_BACKUP"
@@ -491,14 +629,18 @@ else
         fi
 
         ok "Configurado ${SIZE_VAR}=${ZRAM_SIZE_MB} (${ZRAM_SIZE_MB} MiB) en $ZRAM_CONF"
-        sudo systemctl restart zramswap.service 2>/dev/null || sudo service zramswap restart
+        sudo systemctl restart zramswap.service 2>/dev/null || sudo service zramswap restart \
+          || warn "No se pudo reiniciar zramswap; la nueva configuración se aplicará tras reiniciar."
 
         SWAPPINESS_VALUE=130
         SWAPPINESS_CONF="/etc/sysctl.d/99-zram-swappiness.conf"
         if confirm "¿Ajustar vm.swappiness a ${SWAPPINESS_VALUE} (recomendado con zram; por defecto es 60 y está pensado para swap en disco)?"; then
           echo "vm.swappiness=${SWAPPINESS_VALUE}" | sudo tee "$SWAPPINESS_CONF" >/dev/null
-          sudo sysctl -p "$SWAPPINESS_CONF" >/dev/null
-          ok "Configurado vm.swappiness=${SWAPPINESS_VALUE} de forma persistente en $SWAPPINESS_CONF"
+          if sudo sysctl -p "$SWAPPINESS_CONF" >/dev/null; then
+            ok "Configurado vm.swappiness=${SWAPPINESS_VALUE} de forma persistente en $SWAPPINESS_CONF"
+          else
+            warn "No se pudo aplicar vm.swappiness ahora; el valor quedó guardado en $SWAPPINESS_CONF y se aplicará al reiniciar."
+          fi
         else
           warn "Se omite el ajuste de vm.swappiness."
         fi
@@ -523,31 +665,29 @@ fi
 # compatibilidad con bookworm/bullseye de la versión trixie de este
 # proyecto).
 #
-# NOTA sobre el borrado del perfil de ESR: no hay que confiar en que
-# el nombre de la carpeta contenga "esr". Firefox solo le agrega ese
-# sufijo al perfil cuando detecta más de una instalación compitiendo
-# por el perfil por defecto; si ESR fue la única instalación que
-# existió en este equipo, su carpeta puede llamarse simplemente
-# "xxxxxxxx.default", sin ningún "esr" en el nombre. Por eso acá se
-# toma una foto de TODAS las carpetas de perfil que ya existen antes
-# de instalar nada nuevo: en este punto del script, cualquier perfil
-# que exista solo puede pertenecer a ESR (el release todavía no está
-# instalado), así que no hace falta adivinar el nombre.
+# NOTA sobre la migración: el objetivo es quedarse SOLO con Firefox de
+# Mozilla, sin conservar nada de ESR (paquete, configuración ni perfiles).
+# El orden es deliberado:
+#   1) se descarga y verifica la clave de Mozilla, se añade su repositorio
+#      y se comprueba que está disponible (pasos no destructivos);
+#   2) solo si todo eso sale bien se elimina ESR con todos sus datos;
+#   3) por último se instala Firefox.
+# Así, un fallo de red o de verificación no deja el equipo sin navegador
+# ni sin perfil.
+#
+# Los perfiles solo se borran si firefox-esr estaba instalado al empezar
+# esta sección. Si no lo estaba (por ejemplo, en una reejecución del
+# script), lo que haya en ~/.mozilla/firefox ya pertenece al Firefox
+# normal y no se toca.
 
 MOZILLA_PROFILES_DIR="$HOME/.mozilla/firefox"
-MOZILLA_PROFILES_INI="$MOZILLA_PROFILES_DIR/profiles.ini"
+ESR_PROFILES_REMOVED=0
+ESR_PURGE_FAILED=0
+FIREFOX_INSTALL_FAILED=0
 
-if confirm "¿Sustituir Firefox ESR de Debian por Firefox oficial del repositorio de Mozilla?"; then
-
-  PRE_MIGRATION_PROFILE_DIRS=()
-  if [[ -d "$MOZILLA_PROFILES_DIR" ]]; then
-    while IFS= read -r -d '' dir; do
-      case "$(basename -- "$dir")" in
-        "Crash Reports"|"Pending Pings"|"Profile Groups") continue ;;
-      esac
-      PRE_MIGRATION_PROFILE_DIRS+=("$dir")
-    done < <(find "$MOZILLA_PROFILES_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
-  fi
+if [[ "$WGET_OK" -ne 1 ]]; then
+  warn "Falta 'wget' (necesario para descargar la clave de Mozilla) y no se pudo instalar. Se omite la sustitución de Firefox."
+elif confirm "¿Sustituir Firefox ESR de Debian por Firefox oficial del repositorio de Mozilla?\n\nAVISO: si Firefox ESR está instalado, se eliminarán también su configuración (/etc/firefox-esr) y TODOS sus perfiles y datos en ~/.mozilla/firefox (marcadores, contraseñas, historial, extensiones). Es irreversible. Firefox normal empezará con un perfil limpio." 18 76; then
 
   FIREFOX_ESR_PKGS=()
   for pkg in firefox-esr firefox-esr-l10n-es; do
@@ -555,59 +695,52 @@ if confirm "¿Sustituir Firefox ESR de Debian por Firefox oficial del repositori
       FIREFOX_ESR_PKGS+=("$pkg")
     fi
   done
-  if [[ ${#FIREFOX_ESR_PKGS[@]} -gt 0 ]]; then
-    log "Quitando Firefox ESR: ${FIREFOX_ESR_PKGS[*]}"
-    # "purge" en vez de "remove": si se usa "remove", dpkg deja el
-    # paquete en estado "rc" (removido, config sin purgar) y en una
-    # reejecución del script "dpkg -s" sigue fallando igual, pero
-    # /etc/firefox-esr queda con restos de config para siempre.
-    sudo apt purge -y "${FIREFOX_ESR_PKGS[@]}"
-    sudo apt autoremove -y
-  else
-    warn "Firefox ESR no estaba instalado como paquete (o ya se había quitado antes). Se continúa igual para poder limpiar cualquier perfil huérfano que haya quedado de una ejecución anterior."
-  fi
 
-  if [[ -d /etc/firefox-esr ]]; then
-    # dpkg no borra el directorio si queda algo adentro que no le
-    # pertenece a ningún paquete (por ejemplo /etc/firefox-esr/pref/).
-    log "Quitando restos de configuración en /etc/firefox-esr"
-    sudo rm -rf /etc/firefox-esr
+  MOZILLA_KEY_OK=0
+  MOZILLA_READY=0
+
+  # --- 1) Clave de Mozilla: descarga y verificación de la huella ---
+  if ! command -v gpg >/dev/null 2>&1; then
+    log "Instalando gnupg (necesario para verificar la clave de Mozilla)..."
+    sudo apt install -y gnupg || warn "No se pudo instalar gnupg."
   fi
 
   if ! command -v gpg >/dev/null 2>&1; then
-    log "Instalando gnupg (necesario para verificar la clave de Mozilla)..."
-    sudo apt install -y gnupg
-  fi
-
-  sudo install -d -m 0755 /etc/apt/keyrings
-  wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- \
-    | sudo tee /etc/apt/keyrings/packages.mozilla.org.asc >/dev/null
-
-  MOZILLA_GPG_TMPHOME="$(mktemp -d)"
-  trap 'rm -rf "$MOZILLA_GPG_TMPHOME"' EXIT
-
-  MOZILLA_EXPECTED_FPR="35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3"
-  MOZILLA_ACTUAL_FPR="$(
-    GNUPGHOME="$MOZILLA_GPG_TMPHOME" gpg -n -q --import --import-options import-show \
-      /etc/apt/keyrings/packages.mozilla.org.asc \
-      | awk '/pub/{getline; gsub(/^ +| +$/,""); print; exit}'
-  )" || true
-
-  rm -rf "$MOZILLA_GPG_TMPHOME"
-  trap - EXIT
-
-  if [[ "$MOZILLA_ACTUAL_FPR" == "$MOZILLA_EXPECTED_FPR" ]]; then
-    ok "Huella digital de la clave de Mozilla verificada correctamente."
-    MOZILLA_KEY_OK=1
+    warn "Sin 'gpg' no se puede verificar la clave de Mozilla. Se omite la sustitución de Firefox; ESR y sus perfiles no se han tocado."
   else
-    warn "ERROR: la huella digital de la clave de Mozilla NO coincide."
-    warn "  Esperada: $MOZILLA_EXPECTED_FPR"
-    warn "  Obtenida: ${MOZILLA_ACTUAL_FPR:-<vacía>}"
-    warn "Por seguridad, se aborta este paso."
-    sudo rm -f /etc/apt/keyrings/packages.mozilla.org.asc
-    MOZILLA_KEY_OK=0
+    sudo install -d -m 0755 /etc/apt/keyrings
+    if wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- \
+        | sudo tee /etc/apt/keyrings/packages.mozilla.org.asc >/dev/null; then
+      MOZILLA_GPG_TMPHOME="$(mktemp -d)"
+      trap 'rm -rf "$MOZILLA_GPG_TMPHOME"' EXIT
+
+      MOZILLA_EXPECTED_FPR="35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3"
+      MOZILLA_ACTUAL_FPR="$(
+        GNUPGHOME="$MOZILLA_GPG_TMPHOME" gpg -n -q --import --import-options import-show \
+          /etc/apt/keyrings/packages.mozilla.org.asc \
+          | awk '/pub/{getline; gsub(/^ +| +$/,""); print; exit}'
+      )" || true
+
+      rm -rf "$MOZILLA_GPG_TMPHOME"
+      trap - EXIT
+
+      if [[ "$MOZILLA_ACTUAL_FPR" == "$MOZILLA_EXPECTED_FPR" ]]; then
+        ok "Huella digital de la clave de Mozilla verificada correctamente."
+        MOZILLA_KEY_OK=1
+      else
+        warn "ERROR: la huella digital de la clave de Mozilla NO coincide."
+        warn "  Esperada: $MOZILLA_EXPECTED_FPR"
+        warn "  Obtenida: ${MOZILLA_ACTUAL_FPR:-<vacía>}"
+        warn "Por seguridad, se aborta este paso. Firefox ESR y sus perfiles no se han tocado."
+        sudo rm -f /etc/apt/keyrings/packages.mozilla.org.asc
+      fi
+    else
+      warn "No se pudo descargar la clave de Mozilla (¿sin conexión?). Se omite la sustitución de Firefox; ESR y sus perfiles no se han tocado."
+      sudo rm -f /etc/apt/keyrings/packages.mozilla.org.asc
+    fi
   fi
 
+  # --- 2) Repositorio de Mozilla ---
   if [[ "$MOZILLA_KEY_OK" -eq 1 ]]; then
     MOZILLA_SOURCES="/etc/apt/sources.list.d/mozilla.sources"
     sudo tee "$MOZILLA_SOURCES" >/dev/null <<'EOF'
@@ -625,53 +758,85 @@ Pin: origin packages.mozilla.org
 Pin-Priority: 1000
 EOF
 
-    sudo apt update
-    sudo apt install -y firefox
-
-    FIREFOX_L10N_CANDIDATES=(firefox-l10n-es-es firefox-l10n-es-mx firefox-l10n-es-ar firefox-l10n-es)
-    FIREFOX_L10N_PKG=""
-    for pkg in "${FIREFOX_L10N_CANDIDATES[@]}"; do
-      if apt-cache show "$pkg" >/dev/null 2>&1; then
-        FIREFOX_L10N_PKG="$pkg"
-        break
-      fi
-    done
-
-    if confirm "¿Instalar también el paquete de idioma español${FIREFOX_L10N_PKG:+ ($FIREFOX_L10N_PKG)}?"; then
-      if [[ -n "$FIREFOX_L10N_PKG" ]]; then
-        sudo apt install -y "$FIREFOX_L10N_PKG"
-      else
-        warn "No se encontró ningún paquete de idioma español disponible (se probó: ${FIREFOX_L10N_CANDIDATES[*]})."
-      fi
+    if ! sudo apt update; then
+      warn "'apt update' terminó con errores; se intenta igualmente instalar Firefox por si el repositorio de Mozilla sí se descargó bien."
     fi
 
-    ok "Firefox de Mozilla instalado. Comprueba la versión con: firefox --version"
+    # --- 3) Instalación de Firefox normal (PRIMERO, antes de tocar ESR) ---
+    # No se usa "apt-cache policy" como comprobación previa: puede dar
+    # falso negativo (sin candidato visible) aunque "apt install" funcione
+    # perfectamente. La única forma fiable de saber si Firefox está
+    # disponible es intentar instalarlo de verdad.
+    if sudo apt install -y firefox; then
+      MOZILLA_READY=1
+      FIREFOX_L10N_CANDIDATES=(firefox-l10n-es-es firefox-l10n-es-mx firefox-l10n-es-ar firefox-l10n-es)
+      FIREFOX_L10N_PKG=""
+      for pkg in "${FIREFOX_L10N_CANDIDATES[@]}"; do
+        if apt-cache show "$pkg" >/dev/null 2>&1; then
+          FIREFOX_L10N_PKG="$pkg"
+          break
+        fi
+      done
 
-    if [[ ${#PRE_MIGRATION_PROFILE_DIRS[@]} -gt 0 ]]; then
-      PROFILE_LIST="$(printf '  - %s\n' "${PRE_MIGRATION_PROFILE_DIRS[@]}")"
-      if confirm "Se ha(n) detectado carpeta(s) de perfil de Firefox de antes de esta instalación (pertenecen a ESR, aunque no tengan \"esr\" en el nombre):\n\n${PROFILE_LIST}\n\nSi las dejas, herramientas como AutoFirma pueden seguir usando ese perfil antiguo como referencia en vez del perfil nuevo de Firefox release.\n\nAVISO: esto borra marcadores, contraseñas guardadas, historial y extensiones de ese perfil. Es irreversible.\n\n¿Eliminar también esa(s) carpeta(s)?" 20 78; then
-        REMOVED_PROFILE_NAMES=()
-        for dir in "${PRE_MIGRATION_PROFILE_DIRS[@]}"; do
-          rm -rf -- "$dir"
-          ok "Perfil antiguo eliminado: $dir"
-          REMOVED_PROFILE_NAMES+=("$(basename -- "$dir")")
-        done
-        _cleanup_profiles_ini "$MOZILLA_PROFILES_INI" "${REMOVED_PROFILE_NAMES[@]}"
+      if confirm "¿Instalar también el paquete de idioma español${FIREFOX_L10N_PKG:+ ($FIREFOX_L10N_PKG)}?"; then
+        if [[ -n "$FIREFOX_L10N_PKG" ]]; then
+          sudo apt install -y "$FIREFOX_L10N_PKG" \
+            || warn "No se pudo instalar $FIREFOX_L10N_PKG. Reintenta luego con: sudo apt install $FIREFOX_L10N_PKG"
+        else
+          warn "No se encontró ningún paquete de idioma español disponible (se probó: ${FIREFOX_L10N_CANDIDATES[*]})."
+        fi
+      fi
+
+      ok "Firefox de Mozilla instalado. Comprueba la versión con: firefox --version"
+    else
+      FIREFOX_INSTALL_FAILED=1
+      warn "No se pudo instalar Firefox de Mozilla. Se omite la sustitución; ESR y sus perfiles no se han tocado."
+      warn "Reintenta manualmente con: sudo apt update && sudo apt install firefox"
+    fi
+  fi
+
+  # --- 4) Eliminación de Firefox ESR y sus datos (SOLO si Firefox normal
+  # ya quedó instalado y funcionando) ---
+  if [[ "$MOZILLA_READY" -eq 1 ]]; then
+    ESR_PURGED=0
+    if [[ ${#FIREFOX_ESR_PKGS[@]} -gt 0 ]]; then
+      log "Quitando Firefox ESR: ${FIREFOX_ESR_PKGS[*]}"
+      # "purge" en vez de "remove": si se usa "remove", dpkg deja el
+      # paquete en estado "rc" (removido, config sin purgar) y
+      # /etc/firefox-esr queda con restos de config para siempre.
+      if sudo apt purge -y "${FIREFOX_ESR_PKGS[@]}"; then
+        ESR_PURGED=1
+        sudo apt autoremove -y || warn "'apt autoremove' falló (no es crítico)."
       else
-        warn "Se conserva(n) el/los perfil(es) antiguos."
+        ESR_PURGE_FAILED=1
+        warn "No se pudo eliminar Firefox ESR: puede seguir instalado junto a Firefox normal. Por seguridad no se toca /etc/firefox-esr ni se borran sus perfiles."
+      fi
+    else
+      warn "Firefox ESR no estaba instalado como paquete (o ya se había quitado antes). No se borra ningún perfil."
+    fi
+
+    # Solo se borra /etc/firefox-esr si el purge terminó bien o si ESR ya no
+    # estaba instalado (resto huérfano). Si el purge falla, ESR puede seguir
+    # instalado y su configuración se deja intacta.
+    if [[ -d /etc/firefox-esr && ( "$ESR_PURGED" -eq 1 || ${#FIREFOX_ESR_PKGS[@]} -eq 0 ) ]]; then
+      # dpkg no borra el directorio si queda algo dentro que no le
+      # pertenece a ningún paquete (por ejemplo /etc/firefox-esr/pref/).
+      log "Quitando restos de configuración en /etc/firefox-esr"
+      sudo rm -rf /etc/firefox-esr
+    fi
+
+    if [[ "$ESR_PURGED" -eq 1 && -d "$MOZILLA_PROFILES_DIR" ]]; then
+      log "Eliminando perfiles y datos de Firefox ESR: $MOZILLA_PROFILES_DIR"
+      if rm -rf -- "$MOZILLA_PROFILES_DIR"; then
+        ESR_PROFILES_REMOVED=1
+        ok "Perfiles y datos de Firefox ESR eliminados."
+      else
+        warn "No se pudieron eliminar por completo los perfiles de $MOZILLA_PROFILES_DIR. Revísalo a mano."
       fi
     fi
   fi
 else
   warn "Se omite la sustitución de Firefox."
-
-  # Aunque no se elija sustituir Firefox en esta corrida, si quedaron
-  # carpetas de perfil huérfanas de una ejecución anterior (ESR ya
-  # desinstalado, pero perfil sin borrar) conviene avisarlo igual.
-  if [[ -d "$MOZILLA_PROFILES_DIR" ]] && ! dpkg -s firefox-esr >/dev/null 2>&1 \
-     && dpkg -s firefox >/dev/null 2>&1; then
-    warn "Firefox ESR no está instalado y Firefox release sí, pero no se comprobó si quedan perfiles huérfanos en $MOZILLA_PROFILES_DIR (se omitió por elección del usuario). Revisalo manualmente si AutoFirma u otra herramienta agarra el perfil equivocado."
-  fi
 fi
 
 # ----------------------------------------------------------------------
@@ -699,102 +864,239 @@ fi
 
 NVIDIA_KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb"
 
-GPU_INFO="$(lspci | grep -Ei 'vga|3d' || true)"
+GPU_INFO=""
+if ensure_cmd lspci pciutils; then
+  GPU_INFO="$(lspci | grep -Ei 'vga|3d' || true)"
+else
+  warn "No se puede detectar la GPU sin 'lspci'; se omiten las secciones de NVIDIA y switcheroo-control."
+fi
+
+# Estado de Secure Boot: imprime "enabled", "disabled", "noefi" (sistema
+# sin UEFI o sin soporte de Secure Boot: no aplica) o "unknown".
+# Primero se usa mokutil, si está instalado; si no, se lee directamente la
+# variable EFI SecureBoot (el último byte vale 1 si está activado).
+# No se instala ningún paquete para esta comprobación.
+detect_secure_boot() {
+  local state efivar value
+  if command -v mokutil >/dev/null 2>&1; then
+    state="$(mokutil --sb-state 2>/dev/null || true)"
+    case "${state,,}" in
+      *"secureboot enabled"*)  echo "enabled";  return 0 ;;
+      *"secureboot disabled"*) echo "disabled"; return 0 ;;
+      *"not supported"*|*"doesn't support"*) echo "noefi"; return 0 ;;
+    esac
+  fi
+
+  if [[ ! -d /sys/firmware/efi ]]; then
+    echo "noefi"
+    return 0
+  fi
+
+  efivar="$(compgen -G '/sys/firmware/efi/efivars/SecureBoot-*' | head -n 1 || true)"
+  if [[ -n "$efivar" && -r "$efivar" ]]; then
+    value="$(od -An -t u1 -j 4 -N 1 "$efivar" 2>/dev/null | tr -d '[:space:]' || true)"
+    case "$value" in
+      1) echo "enabled";  return 0 ;;
+      0) echo "disabled"; return 0 ;;
+    esac
+  fi
+
+  echo "unknown"
+}
 
 if echo "$GPU_INFO" | grep -qi nvidia; then
   NVIDIA_LINE="$(echo "$GPU_INFO" | grep -i nvidia)"
 
-  if confirm "GPU NVIDIA detectada:\n  ${NVIDIA_LINE}\n\nAviso: este paso instala 'nvidia-open', el módulo de kernel de código abierto de NVIDIA, vía el repositorio CUDA oficial de NVIDIA (rama debian13, la combinación usada y probada también en trixie/testing). Solo soporta GPUs Turing en adelante (RTX 20xx, GTX 16xx, RTX 30xx/40xx/50xx...). En una GPU más antigua (GTX 10xx y anteriores) este driver no cargará; en ese caso necesitarías el paquete 'nvidia-driver' (propietario clásico) en su lugar. El script no comprueba el modelo concreto, solo que el fabricante sea NVIDIA.\n\n¿Instalar el driver NVIDIA (nvidia-open, última versión disponible en el repo)?" 22 76; then
+  # Secure Boot se comprueba ANTES de instalar, para que se sepa de
+  # antemano si hará falta completar el proceso MOK/firma del módulo.
+  SECURE_BOOT_STATE="$(detect_secure_boot)"
+  case "$SECURE_BOOT_STATE" in
+    enabled)
+      SB_NOTE="ATENCIÓN: Secure Boot está ACTIVADO. Tras instalar, el módulo del kernel de NVIDIA no cargará hasta que completes el proceso de firma/MOK (requiere reiniciar y confirmar en el MOK Manager; consulta MANUAL.md)."
+      warn "$SB_NOTE"
+      ;;
+    disabled)
+      SB_NOTE="Secure Boot está desactivado: no hace falta firmar el módulo de NVIDIA."
+      log "$SB_NOTE"
+      ;;
+    noefi)
+      SB_NOTE="Este sistema no arranca en modo UEFI o no soporta Secure Boot: no aplica el proceso de firma MOK."
+      log "$SB_NOTE"
+      ;;
+    *)
+      SB_NOTE="AVISO: no se ha podido determinar el estado de Secure Boot. Si lo tienes activado, tras instalar puede hacer falta completar el proceso de firma/MOK (consulta MANUAL.md)."
+      warn "$SB_NOTE"
+      ;;
+  esac
 
-    if ! dpkg -s cuda-keyring >/dev/null 2>&1; then
+  if [[ "$WGET_OK" -ne 1 ]] && ! dpkg -s cuda-keyring >/dev/null 2>&1; then
+    warn "Se ha detectado una GPU NVIDIA, pero falta 'wget' (necesario para añadir el repositorio de NVIDIA) y no se pudo instalar. Se omite el driver NVIDIA."
+  elif confirm "GPU NVIDIA detectada:\n  ${NVIDIA_LINE}\n\nAviso: este paso instala 'nvidia-open', el módulo de kernel de código abierto de NVIDIA, vía el repositorio CUDA oficial de NVIDIA (rama debian13, la combinación usada y probada también en trixie/testing). Solo soporta GPUs Turing en adelante (RTX 20xx, GTX 16xx, RTX 30xx/40xx/50xx...). En una GPU más antigua (GTX 10xx y anteriores) este driver no cargará; en ese caso necesitarías el paquete 'nvidia-driver' (propietario clásico) en su lugar. El script no comprueba el modelo concreto, solo que el fabricante sea NVIDIA.\n\n${SB_NOTE}\n\n¿Instalar el driver NVIDIA (nvidia-open, última versión disponible en el repo)?" 28 76; then
+
+    # --- Repositorio de NVIDIA (cuda-keyring) ---
+    NVIDIA_REPO_READY=0
+    if dpkg -s cuda-keyring >/dev/null 2>&1; then
+      ok "El repositorio de NVIDIA (cuda-keyring) ya está instalado."
+      NVIDIA_REPO_READY=1
+    else
       log "Añadiendo el repositorio de NVIDIA (cuda-keyring)..."
       NVIDIA_KEYRING_TMP="$(mktemp --suffix=.deb)"
-      wget -qO "$NVIDIA_KEYRING_TMP" "$NVIDIA_KEYRING_URL"
-      sudo dpkg -i "$NVIDIA_KEYRING_TMP"
+      if wget -qO "$NVIDIA_KEYRING_TMP" "$NVIDIA_KEYRING_URL" && [[ -s "$NVIDIA_KEYRING_TMP" ]]; then
+        if sudo dpkg -i "$NVIDIA_KEYRING_TMP"; then
+          NVIDIA_REPO_READY=1
+        else
+          warn "No se pudo instalar cuda-keyring (falló 'dpkg -i')."
+        fi
+      else
+        warn "No se pudo descargar cuda-keyring desde $NVIDIA_KEYRING_URL (¿sin conexión o URL cambiada?)."
+      fi
       rm -f "$NVIDIA_KEYRING_TMP"
-      sudo apt update
-    else
-      ok "El repositorio de NVIDIA (cuda-keyring) ya está instalado."
     fi
 
-    # Pin de origen para el repo NVIDIA CUDA (mismo patrón que Mozilla en
-    # la sección 7). Sin esto, paquetes como nvidia-driver-libs también
-    # existen de forma nativa en el repo non-free de Debian con una
-    # versión distinta; sin pin explícito, APT podría resolver algún
-    # paquete del stack NVIDIA desde un origen distinto al resto,
-    # mezclando versiones entre el módulo de kernel y las librerías.
-    log "Fijando el repositorio de NVIDIA como origen preferente para el stack nvidia-*..."
-    sudo tee /etc/apt/preferences.d/nvidia-cuda >/dev/null <<'EOF'
-Package: nvidia-* libnvidia-*
+    if [[ "$NVIDIA_REPO_READY" -ne 1 ]]; then
+      warn "Se omite la instalación del driver NVIDIA: el repositorio de NVIDIA no está disponible. No se ha tocado nouveau ni GRUB."
+    else
+
+      # Pin de origen para el repo NVIDIA CUDA (mismo patrón que Mozilla en
+      # la sección 7). Sin esto, paquetes como nvidia-driver-libs también
+      # existen de forma nativa en el repo non-free de Debian con una
+      # versión distinta; sin pin explícito, APT podría resolver algún
+      # paquete del stack NVIDIA desde un origen distinto al resto,
+      # mezclando versiones entre el módulo de kernel y las librerías.
+      #
+      # Los comodines 'nvidia-*' / 'libnvidia-*' NO cubren (a) paquetes del
+      # driver con otros nombres (libcuda1, libglx-nvidia0, libegl-nvidia0,
+      # libgles-nvidia*, libnvcuvid1, libnvoptix1, libxnvctrl0,
+      # xserver-xorg-video-nvidia, firmware-nvidia-gsp), ni (b) las variantes
+      # de 32 bits (':i386'): en las pruebas, los comodines no les aplicaron el
+      # pin, así que se nombran explícitamente. Si una versión nueva del
+      # driver renombra alguno de estos paquetes (p. ej. libnvidia-egl-wayland21),
+      # añade aquí el nombre nuevo.
+      log "Fijando el repositorio de NVIDIA como origen preferente para el stack nvidia-*..."
+      sudo tee /etc/apt/preferences.d/nvidia-cuda >/dev/null <<'EOF'
+Package: nvidia-* libnvidia-* libegl-nvidia* libgles-nvidia* libglx-nvidia* libcuda1 libcudadebugger1 libnvcuvid1 libnvoptix1 libxnvctrl0 xserver-xorg-video-nvidia firmware-nvidia-gsp
+Pin: origin developer.download.nvidia.com
+Pin-Priority: 1000
+
+Package: nvidia-driver-libs:i386 nvidia-vulkan-icd:i386 libcuda1:i386 libegl-nvidia0:i386 libgles-nvidia1:i386 libgles-nvidia2:i386 libglx-nvidia0:i386
+Pin: origin developer.download.nvidia.com
+Pin-Priority: 1000
+
+Package: libnvidia-allocator1:i386 libnvidia-egl-gbm1:i386 libnvidia-egl-wayland21:i386 libnvidia-egl-xcb1:i386 libnvidia-egl-xlib1:i386 libnvidia-eglcore:i386 libnvidia-glcore:i386 libnvidia-glvkspirv:i386 libnvidia-gpucomp:i386 libnvidia-ml1:i386 libnvidia-ptxjitcompiler1:i386
 Pin: origin developer.download.nvidia.com
 Pin-Priority: 1000
 EOF
 
-    log "Instalando el driver NVIDIA (sin pinear versión -> se resuelve la más reciente del repo, ahora con origen fijado)..."
-    sudo dpkg --add-architecture i386
-    sudo apt update
-    sudo apt install -y \
-      linux-headers-amd64 \
-      firmware-misc-nonfree \
-      dkms \
-      nvidia-open \
-      nvidia-kernel-open-dkms \
-      nvidia-settings \
-      libvulkan-dev \
-      nvidia-vulkan-icd \
-      vulkan-tools \
-      vulkan-validationlayers \
-      nvidia-driver-libs:i386 \
-      nvidia-vaapi-driver
+      log "Instalando el driver NVIDIA (sin pinear versión -> se resuelve la más reciente del repo, ahora con origen fijado)..."
+      sudo dpkg --add-architecture i386
+      if ! sudo apt update; then
+        warn "'apt update' terminó con errores; se intenta la instalación con los índices disponibles."
+      fi
 
-    log "Deshabilitando el driver nouveau..."
-    sudo tee /etc/modprobe.d/blacklist-nouveau.conf >/dev/null <<'EOF'
+      # Si esta instalación falla NO se toca nouveau ni GRUB: bloquear
+      # nouveau sin tener el driver de NVIDIA funcionando dejaría el
+      # sistema sin driver gráfico para esa GPU.
+      if ! sudo apt install -y \
+        linux-headers-amd64 \
+        firmware-misc-nonfree \
+        dkms \
+        nvidia-open \
+        nvidia-kernel-open-dkms \
+        nvidia-settings \
+        libvulkan-dev \
+        nvidia-vulkan-icd \
+        vulkan-tools \
+        vulkan-validationlayers \
+        nvidia-driver-libs:i386 \
+        nvidia-vaapi-driver; then
+        warn "Falló la instalación del driver NVIDIA. No se ha tocado nouveau ni GRUB, para no dejar el sistema sin driver gráfico."
+        warn "Revisa el error de arriba y reintenta: sudo apt install nvidia-open nvidia-kernel-open-dkms nvidia-driver-libs:i386"
+      else
+
+        log "Deshabilitando el driver nouveau..."
+        sudo tee /etc/modprobe.d/blacklist-nouveau.conf >/dev/null <<'EOF'
 blacklist nouveau
 options nouveau modeset=0
 EOF
 
-    log "Configurando GRUB para KMS de NVIDIA..."
-    NVIDIA_GRUB_BACKUP="/etc/default/grub.bak.$(date +%Y%m%d%H%M%S)"
-    sudo cp /etc/default/grub "$NVIDIA_GRUB_BACKUP"
-    ok "Copia de seguridad: $NVIDIA_GRUB_BACKUP"
+        # Fichero propio (no se tocan los de los paquetes NVIDIA). Se
+        # sobrescribe entero en cada ejecución, así que no se duplica.
+        # NVreg_PreserveVideoMemoryAllocations=1 hace coherentes los
+        # servicios nvidia-suspend/hibernate/resume que se habilitan más
+        # abajo. NVreg_TemporaryFilePath=/var/tmp se usa para que el volcado
+        # de la VRAM no vaya a /tmp, que en Debian puede ser un tmpfs (RAM).
+        # Ojo: /var/tmp tampoco garantiza por sí solo estar en disco (depende
+        # de cómo esté montado), y el sistema de archivos que lo contenga
+        # debe tener espacio libre suficiente para volcar la VRAM completa.
+        log "Configurando la preservación de memoria de vídeo para suspensión/hibernación..."
+        sudo tee /etc/modprobe.d/nvidia-preserve-vram.conf >/dev/null <<'EOF'
+options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_TemporaryFilePath=/var/tmp
+EOF
 
-    NVIDIA_GRUB_PARAMS=(nvidia-drm.modeset=1 nvidia-drm.fbdev=1)
-    CURRENT_CMDLINE="$(grep -oP '^GRUB_CMDLINE_LINUX_DEFAULT="\K[^"]*' /etc/default/grub || true)"
+        log "Configurando GRUB para KMS de NVIDIA..."
+        NVIDIA_GRUB_PARAMS=(nvidia-drm.modeset=1 nvidia-drm.fbdev=1)
+        if [[ ! -f /etc/default/grub ]]; then
+          warn "No se encontró /etc/default/grub (¿otro gestor de arranque?); se omite la configuración de GRUB."
+          warn "Añade a mano estos parámetros del kernel en tu gestor de arranque: ${NVIDIA_GRUB_PARAMS[*]}"
+        else
+          NVIDIA_GRUB_BACKUP="/etc/default/grub.bak.$(date +%Y%m%d%H%M%S)"
+          sudo cp /etc/default/grub "$NVIDIA_GRUB_BACKUP"
+          ok "Copia de seguridad: $NVIDIA_GRUB_BACKUP"
 
-    NEW_CMDLINE="$CURRENT_CMDLINE"
-    for param in "${NVIDIA_GRUB_PARAMS[@]}"; do
-      key="${param%%=*}"
-      if [[ "$NEW_CMDLINE" != *"$key"* ]]; then
-        NEW_CMDLINE="${NEW_CMDLINE:+$NEW_CMDLINE }${param}"
+          CURRENT_CMDLINE="$(grep -oP '^GRUB_CMDLINE_LINUX_DEFAULT="\K[^"]*' /etc/default/grub || true)"
+
+          NEW_CMDLINE="$CURRENT_CMDLINE"
+          for param in "${NVIDIA_GRUB_PARAMS[@]}"; do
+            key="${param%%=*}"
+            if [[ "$NEW_CMDLINE" != *"$key"* ]]; then
+              NEW_CMDLINE="${NEW_CMDLINE:+$NEW_CMDLINE }${param}"
+            fi
+          done
+
+          if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
+            sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"${NEW_CMDLINE}\"|" /etc/default/grub
+          else
+            echo "GRUB_CMDLINE_LINUX_DEFAULT=\"${NEW_CMDLINE}\"" | sudo tee -a /etc/default/grub >/dev/null
+          fi
+          ok "GRUB_CMDLINE_LINUX_DEFAULT resultante: ${NEW_CMDLINE}"
+
+          # command -v no alcanza aquí: update-grub vive en /usr/sbin, que
+          # no está en el $PATH de un usuario normal en Debian (solo en el
+          # de root/sudo). Por eso se comprueba también la ruta directa.
+          if command -v update-grub >/dev/null 2>&1 || [[ -x /usr/sbin/update-grub ]]; then
+            sudo update-grub || warn "update-grub ha fallado; revisa la configuración de GRUB y ejecútalo a mano: sudo update-grub"
+          else
+            warn "No se encontró 'update-grub'; regenera la configuración de GRUB manualmente."
+          fi
+        fi
+
+        # "-k all": el blacklist de nouveau y las opciones de modprobe
+        # quedan en los initramfs de TODOS los kernels instalados, no solo
+        # del que está en ejecución. Un error puntual (p. ej. un kernel
+        # sin /lib/modules) no debe abortar todo el script.
+        sudo update-initramfs -u -k all \
+          || warn "update-initramfs devolvió un error en algún kernel; revisa la salida de arriba. Puedes reintentarlo con: sudo update-initramfs -u -k all"
+
+        log "Habilitando servicios de suspensión/hibernación de NVIDIA..."
+        for svc in nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service; do
+          if sudo systemctl enable "$svc" 2>/dev/null; then
+            ok "Servicio habilitado: $svc"
+          else
+            warn "Servicio $svc no disponible en este empaquetado del driver, se omite."
+          fi
+        done
+
+        NVIDIA_INSTALLED=1
+
+        if [[ "$SECURE_BOOT_STATE" == "enabled" ]]; then
+          warn "Secure Boot está ACTIVADO en este sistema."
+          warn "El módulo del kernel de NVIDIA no cargará hasta que firmes la clave MOK."
+          warn "Este paso es manual (requiere reiniciar y confirmar en el MOK Manager)."
+          warn "Consulta la sección 'Secure Boot / NVIDIA' en MANUAL.md ANTES de reiniciar."
+        elif [[ "$SECURE_BOOT_STATE" == "unknown" ]]; then
+          warn "No se pudo determinar el estado de Secure Boot. Si lo tienes activado, consulta la sección 'Secure Boot / NVIDIA' en MANUAL.md ANTES de reiniciar."
+        fi
       fi
-    done
-
-    if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
-      sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"${NEW_CMDLINE}\"|" /etc/default/grub
-    else
-      echo "GRUB_CMDLINE_LINUX_DEFAULT=\"${NEW_CMDLINE}\"" | sudo tee -a /etc/default/grub >/dev/null
-    fi
-    ok "GRUB_CMDLINE_LINUX_DEFAULT resultante: ${NEW_CMDLINE}"
-
-    sudo update-grub
-    sudo update-initramfs -u
-
-    log "Habilitando servicios de suspensión/hibernación de NVIDIA..."
-    for svc in nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service; do
-      if sudo systemctl enable "$svc" 2>/dev/null; then
-        ok "Servicio habilitado: $svc"
-      else
-        warn "Servicio $svc no disponible en este empaquetado del driver, se omite."
-      fi
-    done
-
-    NVIDIA_INSTALLED=1
-
-    if command -v mokutil >/dev/null 2>&1 && mokutil --sb-state 2>/dev/null | grep -qi "enabled"; then
-      warn "Secure Boot está ACTIVADO en este sistema."
-      warn "El módulo del kernel de NVIDIA no cargará hasta que firmes la clave MOK."
-      warn "Este paso es manual (requiere reiniciar y confirmar en el MOK Manager)."
-      warn "Consulta la sección 'Secure Boot / NVIDIA' en MANUAL.md ANTES de reiniciar."
     fi
   else
     warn "Se omite la instalación del driver NVIDIA."
@@ -810,14 +1112,22 @@ GPU_COUNT="$(echo "$GPU_INFO" | grep -c . || true)"
 if [[ "$GPU_COUNT" -ge 2 ]]; then
   GPU_LIST="$(echo "$GPU_INFO" | sed 's/^/  /')"
   if confirm "Se han detectado $GPU_COUNT controladores de vídeo (GPU híbrida: integrada + dedicada):\n\n${GPU_LIST}\n\n¿Instalar switcheroo-control para gestionar el cambio de GPU?" 18 76; then
+    SWITCHEROO_OK=1
     if dpkg -s switcheroo-control >/dev/null 2>&1; then
       ok "switcheroo-control ya está instalado."
-    else
-      sudo apt install -y switcheroo-control
+    elif ! sudo apt install -y switcheroo-control; then
+      warn "No se pudo instalar switcheroo-control. Reintenta luego con: sudo apt install switcheroo-control"
+      SWITCHEROO_OK=0
     fi
-    sudo systemctl enable --now switcheroo-control
-    ok "switcheroo-control instalado y activo. Comprueba las GPUs detectadas con: switcherooctl list"
-    SWITCHEROO_INSTALLED=1
+
+    if [[ "$SWITCHEROO_OK" -eq 1 ]]; then
+      if sudo systemctl enable --now switcheroo-control; then
+        ok "switcheroo-control instalado y activo. Comprueba las GPUs detectadas con: switcherooctl list"
+        SWITCHEROO_INSTALLED=1
+      else
+        warn "No se pudo habilitar/arrancar switcheroo-control. Reintenta luego con: sudo systemctl enable --now switcheroo-control"
+      fi
+    fi
   else
     warn "Se omite la instalación de switcheroo-control."
   fi
@@ -856,6 +1166,11 @@ Notas generales:
   - GNOME Disk Utility instalado (comando: gnome-disks) como
     herramienta de gestión de discos/particiones.
 
+  - Si el grupo OCR se instaló, la extracción de texto de las capturas
+    de pantalla (Spectacle) ya dispone de los datos de idioma de
+    Tesseract (inglés, español y detección de orientación). Comprueba
+    los idiomas disponibles con: tesseract --list-langs
+
   - Si configuraste zram, comprueba su estado con:
       zramswap status
       swapon --show
@@ -880,7 +1195,8 @@ EOF
 if [[ "${ESR_PROFILES_REMOVED:-0}" -eq 1 ]]; then
   cat <<'EOF'
 
-  - Se eliminó también la carpeta del perfil de Firefox ESR en $HOME.
+  - Se eliminaron también los perfiles y datos de Firefox ESR
+    (~/.mozilla/firefox).
     Al abrir el Firefox nuevo se creará un perfil limpio desde cero
     (sin marcadores/contraseñas del ESR anterior).
 EOF
@@ -910,10 +1226,32 @@ if [[ "${SWITCHEROO_INSTALLED:-0}" -eq 1 ]]; then
 EOF
 fi
 
-if [[ ${#FAILED_GROUPS[@]:-0} -gt 0 ]]; then
+if [[ "${FULL_UPGRADE_FAILED:-0}" -eq 1 ]]; then
+  echo
+  echo "  - ATENCIÓN: 'apt full-upgrade' falló durante la ejecución y el script"
+  echo "    continuó con el resto de pasos. Cuando puedas, resuélvelo y reintenta:"
+  echo "      sudo apt update && sudo apt full-upgrade"
+fi
+
+if [[ "${ESR_PURGE_FAILED:-0}" -eq 1 ]]; then
+  echo
+  echo "  - ATENCIÓN: no se pudo eliminar Firefox ESR, así que puede seguir"
+  echo "    instalado junto a Firefox de Mozilla. Su configuración (/etc/firefox-esr)"
+  echo "    y sus perfiles no se han tocado. Cuando puedas, reintenta:"
+  echo "      sudo apt purge firefox-esr firefox-esr-l10n-es"
+fi
+
+if [[ "${FIREFOX_INSTALL_FAILED:-0}" -eq 1 ]]; then
+  echo
+  echo "  - ATENCIÓN: no se pudo instalar Firefox de Mozilla (Firefox ESR ya se"
+  echo "    había eliminado). Reintenta con:"
+  echo "      sudo apt update && sudo apt install firefox"
+fi
+
+if [[ ${#FAILED_GROUPS[@]} -gt 0 ]]; then
   echo
   echo "  - ATENCIÓN: los siguientes grupos de paquetes fallaron durante la"
-  echo "    instalación y se omitieron (revisá el log de arriba y reintentá"
+  echo "    instalación y se omitieron (revisa el log de arriba y reintenta"
   echo "    a mano con 'sudo apt install <paquetes>'):"
   printf '      · %s\n' "${FAILED_GROUPS[@]}"
 fi

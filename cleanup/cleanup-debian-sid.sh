@@ -123,7 +123,7 @@ fi
 # Pantalla de bienvenida
 # ----------------------------------------------------------------------
 
-confirm "Versión del Limpiador de Debian Sid csr79a ${VERSION}\n\nEste programa revisa, grupo por grupo, aplicaciones de KDE Plasma instaladas por defecto en Debian que muchos usuarios no llegan a usar (suite PIM/Kontact, accesibilidad, Konqueror, xterm, KDE Connect, KDE Partition Manager, e ImageMagick de forma opcional).\n\nNo se eliminará nada sin tu confirmación explícita de cada grupo.\n\n¿Desea continuar?" 18 76 || exit 0
+confirm "Versión del Limpiador de Debian Sid csr79a ${VERSION}\n\nEste programa revisa, grupo por grupo, aplicaciones de KDE Plasma instaladas por defecto en Debian que muchos usuarios no llegan a usar (suite PIM/Kontact, accesibilidad, Konqueror, xterm, KDE Connect, Dragon Player, Juk, KDE Partition Manager, e ImageMagick de forma opcional).\n\nNo se eliminará nada sin tu confirmación explícita de cada grupo.\n\n¿Desea continuar?" 18 76 || exit 0
 
 # ----------------------------------------------------------------------
 # 2. Utilidades
@@ -231,7 +231,17 @@ KDECONNECT_GROUP=(
   kdeconnect
 )
 
-# GRUPO 3d — KDE Partition Manager
+# GRUPO 3d — Dragon Player
+DRAGONPLAYER_GROUP=(
+  dragonplayer
+)
+
+# GRUPO 3e — Juk
+JUK_GROUP=(
+  juk
+)
+
+# GRUPO 3f — KDE Partition Manager
 # Se elimina porque el setup instala GNOME Disk Utility como
 # alternativa para gestión de discos/particiones. Independiente de los
 # demás grupos: no comparte árbol de dependencias con ninguno.
@@ -291,6 +301,8 @@ remove_group "Accesibilidad (KMouseTool, KMouth, Kontrast)" "${ACCESSIBILITY_GRO
 remove_group "Konqueror" "${KONQUEROR_GROUP[@]}"
 remove_group "xterm" "${XTERM_GROUP[@]}"
 remove_group "KDE Connect" "${KDECONNECT_GROUP[@]}"
+remove_group "Dragon Player" "${DRAGONPLAYER_GROUP[@]}"
+remove_group "Juk" "${JUK_GROUP[@]}"
 remove_partitionmanager_group
 
 if [[ "$INCLUDE_IMAGEMAGICK" -eq 1 ]]; then
