@@ -13,7 +13,7 @@ que no usas. Ver `cleanup/README.md` para el detalle de qué elimina.
 
 No hace falta que sepas bash para seguir estos pasos.
 
-Versiones documentadas: `setup-debian-sid.sh` 1.2.1 y `cleanup-debian-sid.sh` 1.1.0.
+Versiones documentadas: `setup-debian-sid.sh` 1.3.0 y `cleanup-debian-sid.sh` 1.1.0.
 
 > **Antes de usar este proyecto:** estos scripts asumen que ya tienes un
 > sistema Debian instalado con los repositorios apuntando a `unstable` (por ejemplo, siguiendo el método recomendado por la wiki de Debian:

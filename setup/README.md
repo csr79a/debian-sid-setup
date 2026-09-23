@@ -13,7 +13,7 @@ script instala, aquel quita.
 > Asume que ya tienes un Debian funcionando con los repos apuntando a
 > unstable.
 
-Versión documentada: **1.2.1**.
+Versión documentada: **1.3.0**.
 
 ---
 

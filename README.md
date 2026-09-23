@@ -13,7 +13,7 @@ adaptado a las particularidades de Sid (repos `unstable`, sin `-security` ni `-b
 > Debian apunta a otra suite (trixie, testing, stable...), `setup-debian-sid.sh`
 > se detiene: no convierte suites automáticamente.
 
-Versiones documentadas: `setup-debian-sid.sh` 1.2.1 y `cleanup-debian-sid.sh` 1.1.0.
+Versiones documentadas: `setup-debian-sid.sh` 1.3.0 y `cleanup-debian-sid.sh` 1.1.0.
 
 ---
 
