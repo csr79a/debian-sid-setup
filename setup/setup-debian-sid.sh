@@ -844,8 +844,8 @@ fi
 # el lanzador (lanzador-debian-sid). Ejecútalo por separado si tienes
 # GPU NVIDIA:
 #
-#   git clone https://github.com/csr79a/nvidia-debian-sid.git
-#   cd nvidia-debian-sid
+#   git clone https://github.com/csr79a/setup-nvidia-debian-sid.git
+#   cd setup-nvidia-debian-sid
 #   ./setup-nvidia-debian-sid.sh
 
 # ----------------------------------------------------------------------

@@ -18,7 +18,7 @@ Versiones documentadas: `setup-debian-sid.sh` 1.4.0 y `cleanup-debian-sid.sh` 1.
 > **Novedad en 1.4.0:** el driver NVIDIA, `switcheroo-control` (GPU
 > híbrida) y el wrapper `nvidia-run` ya no forman parte de
 > `setup-debian-sid.sh`: se instalan aparte con
-> [`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid) (su
+> [`setup-nvidia-debian-sid`](https://github.com/csr79a/setup-nvidia-debian-sid) (su
 > propio `setup-nvidia-debian-sid.sh`). La sección 6 de este manual
 > (Secure Boot / NVIDIA) se refiere a ese proyecto aparte, no a este.
 
@@ -280,11 +280,11 @@ sudo apt reinstall autofirma
 `setup-debian-sid.sh` ya **no** instala el driver NVIDIA: si el script
 detecta una GPU NVIDIA por `lspci`, solo te lo indica en el resumen final
 y te remite al proyecto aparte
-[`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid):
+[`setup-nvidia-debian-sid`](https://github.com/csr79a/setup-nvidia-debian-sid):
 
 ```
-git clone https://github.com/csr79a/nvidia-debian-sid.git
-cd nvidia-debian-sid
+git clone https://github.com/csr79a/setup-nvidia-debian-sid.git
+cd setup-nvidia-debian-sid
 ./setup-nvidia-debian-sid.sh
 ```
 
