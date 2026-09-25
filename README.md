@@ -13,7 +13,13 @@ adaptado a las particularidades de Sid (repos `unstable`, sin `-security` ni `-b
 > Debian apunta a otra suite (trixie, testing, stable...), `setup-debian-sid.sh`
 > se detiene: no convierte suites automáticamente.
 
-Versiones documentadas: `setup-debian-sid.sh` 1.3.0 y `cleanup-debian-sid.sh` 1.1.0.
+Versiones documentadas: `setup-debian-sid.sh` 1.4.0 y `cleanup-debian-sid.sh` 1.1.0.
+
+> **Novedad en 1.4.0:** el driver NVIDIA, `switcheroo-control` (GPU
+> híbrida) y el wrapper `nvidia-run` ya no viven en este script: se han
+> movido a un proyecto aparte,
+> [`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid).
+> Este README y `MANUAL.md` ya están adaptados a ese cambio.
 
 ---
 
@@ -58,8 +64,9 @@ CPU, paquetes de desarrollo/multimedia/sistema/utilidades de disco/OCR
 calculado automáticamente según tu RAM (y `vm.swappiness` opcional),
 sustitución opcional de Firefox ESR por el Firefox oficial de Mozilla
 (con verificación de huella GPG; instala Firefox primero y solo si eso
-funciona elimina ESR y sus perfiles), y detección opcional de hardware
-para instalar el driver NVIDIA y/o `switcheroo-control` (GPU híbrida).
+funciona elimina ESR y sus perfiles). El driver NVIDIA y
+`switcheroo-control` (GPU híbrida) se configuran aparte, con
+[`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid).
 Detalle completo en
 [`setup/README.md`](https://github.com/csr79a/debian-sid-setup/blob/main/setup/README.md).
 

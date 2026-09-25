@@ -6,14 +6,21 @@ ejecutar los dos scripts de este proyecto:
 - **`setup/setup-debian-sid.sh`** — configura repos apuntando a unstable,
 actualiza el sistema e instala un set de paquetes de desarrollo/
 multimedia/sistema/utilidades de disco/OCR, fuentes, y ofrece Firefox
-oficial, driver NVIDIA y `switcheroo-control` según lo que confirmes o
-detecte el hardware. Ver `setup/README.md` para el detalle de qué instala.
+oficial según lo que confirmes. Ver `setup/README.md` para el detalle de
+qué instala.
 - **`cleanup/cleanup-debian-sid.sh`** — elimina aplicaciones de KDE Plasma
 que no usas. Ver `cleanup/README.md` para el detalle de qué elimina.
 
 No hace falta que sepas bash para seguir estos pasos.
 
-Versiones documentadas: `setup-debian-sid.sh` 1.3.0 y `cleanup-debian-sid.sh` 1.1.0.
+Versiones documentadas: `setup-debian-sid.sh` 1.4.0 y `cleanup-debian-sid.sh` 1.1.0.
+
+> **Novedad en 1.4.0:** el driver NVIDIA, `switcheroo-control` (GPU
+> híbrida) y el wrapper `nvidia-run` ya no forman parte de
+> `setup-debian-sid.sh`: se instalan aparte con
+> [`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid) (su
+> propio `setup-nvidia-debian-sid.sh`). La sección 6 de este manual
+> (Secure Boot / NVIDIA) se refiere a ese proyecto aparte, no a este.
 
 > **Antes de usar este proyecto:** estos scripts asumen que ya tienes un
 > sistema Debian instalado con los repositorios apuntando a `unstable` (por ejemplo, siguiendo el método recomendado por la wiki de Debian:
@@ -169,10 +176,12 @@ confirmaciones con `-y`:
 seguridad previa);
 - eliminar Firefox ESR, `/etc/firefox-esr` y **todos** sus perfiles y
 datos (`~/.mozilla/firefox`), sin vuelta atrás;
-- modificar GRUB, initramfs y otras configuraciones del sistema (NVIDIA,
-zram, sysctl);
+- configurar zram y ajustar `vm.swappiness` (sysctl);
 - aceptar automáticamente la licencia de las fuentes de Windows y
 silenciar todos los avisos de `debconf` durante las instalaciones.
+
+(GRUB, initramfs y el resto de configuración de NVIDIA ya no los toca
+este script — viven en `setup-nvidia-debian-sid.sh`, ver sección 6.)
 
 En `cleanup-debian-sid.sh`, `-y` confirma todos los grupos, sin mostrar
 los avisos de las pantallas (por ejemplo, el de KDE Partition Manager
@@ -266,15 +275,30 @@ sudo apt reinstall autofirma
 
 ---
 
-## 6. Secure Boot / NVIDIA
+## 6. Secure Boot / NVIDIA (proyecto aparte)
 
-Si `setup-debian-sid.sh` detecta una GPU NVIDIA y aceptas instalar el
-driver, el script instala `nvidia-open` y configura GRUB para KMS
-automáticamente. Antes de preguntarte, comprueba el estado de Secure Boot
-y te lo muestra en la propia pantalla de confirmación (activado,
-desactivado, sistema sin UEFI o desconocido).
+`setup-debian-sid.sh` ya **no** instala el driver NVIDIA: si el script
+detecta una GPU NVIDIA por `lspci`, solo te lo indica en el resumen final
+y te remite al proyecto aparte
+[`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid):
 
-Si tu sistema tiene **Secure Boot activado**, hay un paso más que el
+```
+git clone https://github.com/csr79a/nvidia-debian-sid.git
+cd nvidia-debian-sid
+./setup-nvidia-debian-sid.sh
+```
+
+Esa sección de este manual queda aquí porque el paso de Secure Boot/MOK
+que describe sigue siendo necesario cuando uses ese otro script, no
+porque `setup-debian-sid.sh` lo haga por ti.
+
+Si aceptas instalar el driver con `setup-nvidia-debian-sid.sh`, ese
+script instala `nvidia-open` y configura GRUB para KMS automáticamente.
+Antes de preguntarte, comprueba el estado de Secure Boot y te lo muestra
+en la propia pantalla de confirmación (activado, desactivado, sistema
+sin UEFI o desconocido).
+
+Si tu sistema tiene **Secure Boot activado**, hay un paso más que ese
 script **no** hace por ti, porque requiere interacción manual delante del
 equipo. El script te lo recuerda con avisos al instalar y en el resumen
 final:
@@ -314,9 +338,10 @@ en cualquier momento con:
 mokutil --sb-state
 ```
 
-Al terminar la instalación de NVIDIA, en modo interactivo el script te
-pregunta si quieres reiniciar ahora. Si tienes Secure Boot activado,
-elige "Reiniciar después" y completa antes el paso 2 de arriba.
+Al terminar la instalación de NVIDIA, en modo interactivo
+`setup-nvidia-debian-sid.sh` te pregunta si quieres reiniciar ahora. Si
+tienes Secure Boot activado, elige "Reiniciar después" y completa antes
+el paso 2 de arriba.
 
 ---
 
@@ -330,8 +355,9 @@ principio de este manual).
 consistentes.
 4. Si usas AutoFirma, instálalo/reinstálalo **después** de este paso
 (ver sección 5).
-5. Si instalaste el driver NVIDIA y tienes Secure Boot activado, sigue
-la sección 6 antes de dar por terminada la instalación.
+5. Si tienes GPU NVIDIA, ejecuta `setup-nvidia-debian-sid.sh` (proyecto
+aparte, ver sección 6) y, si tienes Secure Boot activado, completa el
+enrolado de la clave MOK antes de dar por terminada la instalación.
 6. Cuando lleves un tiempo usando el sistema y tengas claro qué apps de
 KDE no usas, ejecuta `cleanup-debian-sid.sh`.
 7. Prueba siempre primero en una máquina virtual si vas a cambiar algo
@@ -356,9 +382,9 @@ y, si usaste `apt remove` en vez de `--purge` en cleanup, tu
 configuración debería seguir intacta. La única excepción irreversible
 es el borrado de Firefox ESR y de `~/.mozilla/firefox` (sección 5 de
 este manual), que ocurre si confirmas esa pantalla o si usas `-y`. Los
-cambios en `/etc/apt/sources.list`, `/etc/default/grub` y
-`/etc/default/zramswap` sí dejan una copia de seguridad con la fecha en
-el nombre.
+cambios en `/etc/apt/sources.list` y `/etc/default/zramswap` sí dejan
+una copia de seguridad con la fecha en el nombre (`/etc/default/grub`
+solo lo toca `setup-nvidia-debian-sid.sh`, sección 6).
 - Ten en cuenta que en Sid, a diferencia de Trixie, no hay un camino
 sencillo de "vuelta atrás" a stable si algo sale realmente mal a nivel
 de sistema — la recuperación normal es restaurar un snapshot/backup

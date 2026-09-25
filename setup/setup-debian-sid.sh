@@ -8,8 +8,10 @@
 # desarrollo/multimedia/sistema/utilidades de disco/OCR, el microcode
 # correcto según el fabricante de CPU, fuentes de Windows y de Ubuntu,
 # añade el remoto de Flathub, y ofrece (opcional, tras detectar el
-# hardware) zram, Firefox de Mozilla, el driver NVIDIA y
-# switcheroo-control si hay GPU híbrida.
+# hardware) zram y Firefox de Mozilla.
+#
+# El driver NVIDIA, switcheroo-control (GPU híbrida) y el wrapper
+# nvidia-run viven aparte, en setup-nvidia-debian-sid.sh.
 #
 # Interfaz por pantallas (whiptail) para bienvenida, decisiones y
 # resumen final; el progreso de comandos largos (apt, sed, etc.) se
@@ -20,14 +22,6 @@
 # el método recomendado por la wiki de Debian: instalar stable/testing
 # mínimo y luego cambiar los repos a unstable). Este script NO instala
 # Debian ni migra desde stable/testing por ti.
-#
-# NOTA sobre el driver NVIDIA: usa el mismo repositorio CUDA oficial de
-# NVIDIA (cuda-keyring, rama "debian13") que las versiones trixie y
-# testing de este mismo proyecto. NVIDIA no publica una rama dedicada
-# para Sid, pero el repo de debian13 es compatible en la práctica y es
-# la combinación ya probada y en uso; no se sustituye por los paquetes
-# nativos de Debian (nvidia-driver/nvidia-open-kernel-dkms en
-# contrib/non-free), aunque también existen como alternativa.
 #
 # Uso:
 #   chmod +x setup-debian-sid.sh
@@ -40,7 +34,7 @@
 set -euo pipefail
 
 TITLE="Configurador de Debian Sid csr79a"
-VERSION="1.3.0"
+VERSION="1.4.0"
 
 log()   { echo -e "\e[1;34m[*]\e[0m $*"; }
 ok()    { echo -e "\e[1;32m[OK]\e[0m $*"; }
@@ -70,8 +64,7 @@ Uso: $0 [-y|--yes] [-h|--help]
                 - eliminar Firefox ESR, su configuración (/etc/firefox-esr) y
                   TODOS sus perfiles y datos (~/.mozilla/firefox), de forma
                   irreversible;
-                - modificar GRUB, initramfs y otras configuraciones del sistema
-                  (NVIDIA, zram, sysctl...).
+                - configurar zram y ajustar vm.swappiness (sysctl).
               Las comprobaciones críticas NO se saltan con -y: si los
               repositorios configurados no son Debian Sid/unstable, el script
               se detiene.
@@ -111,7 +104,7 @@ if [[ "$ASSUME_YES" -eq 1 ]]; then
   warn "MODO -y ACTIVO: se aceptarán automáticamente TODAS las preguntas, incluidas operaciones destructivas:"
   warn "  - comentar el contenido activo de /etc/apt/sources.list (con copia de seguridad);"
   warn "  - eliminar Firefox ESR, /etc/firefox-esr y TODOS los perfiles y datos de ESR (irreversible);"
-  warn "  - modificar GRUB, initramfs y otras configuraciones del sistema (NVIDIA, zram, sysctl)."
+  warn "  - configurar zram y ajustar vm.swappiness (sysctl)."
   warn "Las comprobaciones críticas siguen activas: si los repositorios no son Sid/unstable, el script se detiene."
 fi
 
@@ -178,7 +171,7 @@ esac
 # Pantalla de bienvenida
 # ----------------------------------------------------------------------
 
-confirm "Versión del Configurador de Debian Sid csr79a ${VERSION}\n\nEste programa configura los repositorios oficiales, actualiza el sistema, instala un set de paquetes de desarrollo/multimedia/sistema/utilidades de disco/OCR, fuentes de Windows y de Ubuntu, y ofrece de forma opcional zram, Firefox de Mozilla, driver NVIDIA y switcheroo-control según el hardware detectado.\n\nCPU detectada: ${CPU_MODEL_NAME}\n\nRecuerda: Sid es la rama de desarrollo de Debian, en movimiento constante. No es apta para sistemas críticos.\n\n¿Desea continuar?" 20 76 || exit 0
+confirm "Versión del Configurador de Debian Sid csr79a ${VERSION}\n\nEste programa configura los repositorios oficiales, actualiza el sistema, instala un set de paquetes de desarrollo/multimedia/sistema/utilidades de disco/OCR, fuentes de Windows y de Ubuntu, y ofrece de forma opcional zram y Firefox de Mozilla según el hardware detectado.\n\nCPU detectada: ${CPU_MODEL_NAME}\n\nRecuerda: Sid es la rama de desarrollo de Debian, en movimiento constante. No es apta para sistemas críticos.\n\n¿Desea continuar?" 20 76 || exit 0
 
 # En Sid, VERSION_CODENAME en /etc/os-release NO siempre es fiable:
 # históricamente ha llegado a venir vacío o con un valor de una rama
@@ -416,7 +409,7 @@ fi
 # en Sid durante transiciones de librerías) haría abortar TODO el
 # script de golpe -- y a estas alturas ya se cambiaron los repos a
 # unstable y se corrió full-upgrade, así que un aborto total dejaría el
-# sistema a mitad de camino sin fuentes/Flathub/zram/Firefox/NVIDIA. Al
+# sistema a mitad de camino sin fuentes/Flathub/zram/Firefox. Al
 # instalar por grupos con su propia comprobación de resultado, un fallo
 # puntual solo omite ESE grupo (se avisa cuál y con qué paquetes) y el
 # resto de la instalación sigue igual.
@@ -500,8 +493,8 @@ fi
 # 3b. Prerrequisitos de los pasos siguientes
 # ----------------------------------------------------------------------
 #
-# Firefox y NVIDIA usan wget (grupo "Control de versiones / descargas") y
-# la detección de GPU usa lspci (pciutils, grupo "Sistema / diagnóstico").
+# Firefox usa wget (grupo "Control de versiones / descargas"); la nota
+# final sobre NVIDIA usa lspci (pciutils, grupo "Sistema / diagnóstico").
 # Si ese grupo falló, se reintenta instalar solo lo imprescindible; si aun
 # así no está disponible, el paso que lo necesite se omite con un aviso en
 # vez de abortar el script entero por "set -e".
@@ -840,331 +833,23 @@ else
 fi
 
 # ----------------------------------------------------------------------
-# 8. Driver NVIDIA (opcional)
+# 8. Driver NVIDIA, switcheroo-control y nvidia-run
 # ----------------------------------------------------------------------
 #
-# Mismo patrón que en setup-debian-trixie.sh y setup-debian-testing.sh:
-# detectar -> preguntar -> instalar por repo oficial (cuda-keyring), sin
-# pinear versión.
+# La instalación del driver NVIDIA (repo CUDA, keyring, pin de apt,
+# blacklist de nouveau, GRUB, initramfs, servicios de suspensión),
+# switcheroo-control (GPU híbrida) y el wrapper nvidia-run ya NO viven
+# en este script: se movieron a un proyecto aparte,
+# setup-nvidia-debian-sid.sh, disponible también como acción propia en
+# el lanzador (lanzador-debian-sid). Ejecútalo por separado si tienes
+# GPU NVIDIA:
 #
-# NOTA sobre el repo: NVIDIA publica el keyring/repo CUDA por versión de
-# Debian estable (p. ej. "debian13"), no existe una rama "sid" dedicada.
-# Se usa aquí el paquete de debian13 -- es la combinación ya probada y
-# en uso, la misma que en trixie/testing; si en el futuro deja de
-# funcionar, revisa la URL vigente en
-# https://developer.download.nvidia.com/compute/cuda/repos/ y ajusta
-# NVIDIA_KEYRING_URL más abajo.
-#
-# LIMITACIÓN CONOCIDA: "nvidia-open" solo soporta GPUs Turing en
-# adelante (RTX 20xx, GTX 16xx, y más recientes). El script no
-# distingue el modelo concreto, solo detecta "es NVIDIA".
-#
-# Secure Boot / MOK enrollment queda deliberadamente FUERA de este
-# script: solo se detecta y se avisa, remitiendo a MANUAL.md.
-
-NVIDIA_KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb"
-
-GPU_INFO=""
-if ensure_cmd lspci pciutils; then
-  GPU_INFO="$(lspci | grep -Ei 'vga|3d' || true)"
-else
-  warn "No se puede detectar la GPU sin 'lspci'; se omiten las secciones de NVIDIA y switcheroo-control."
-fi
-
-# Estado de Secure Boot: imprime "enabled", "disabled", "noefi" (sistema
-# sin UEFI o sin soporte de Secure Boot: no aplica) o "unknown".
-# Primero se usa mokutil, si está instalado; si no, se lee directamente la
-# variable EFI SecureBoot (el último byte vale 1 si está activado).
-# No se instala ningún paquete para esta comprobación.
-detect_secure_boot() {
-  local state efivar value
-  if command -v mokutil >/dev/null 2>&1; then
-    state="$(mokutil --sb-state 2>/dev/null || true)"
-    case "${state,,}" in
-      *"secureboot enabled"*)  echo "enabled";  return 0 ;;
-      *"secureboot disabled"*) echo "disabled"; return 0 ;;
-      *"not supported"*|*"doesn't support"*) echo "noefi"; return 0 ;;
-    esac
-  fi
-
-  if [[ ! -d /sys/firmware/efi ]]; then
-    echo "noefi"
-    return 0
-  fi
-
-  efivar="$(compgen -G '/sys/firmware/efi/efivars/SecureBoot-*' | head -n 1 || true)"
-  if [[ -n "$efivar" && -r "$efivar" ]]; then
-    value="$(od -An -t u1 -j 4 -N 1 "$efivar" 2>/dev/null | tr -d '[:space:]' || true)"
-    case "$value" in
-      1) echo "enabled";  return 0 ;;
-      0) echo "disabled"; return 0 ;;
-    esac
-  fi
-
-  echo "unknown"
-}
-
-if echo "$GPU_INFO" | grep -qi nvidia; then
-  NVIDIA_LINE="$(echo "$GPU_INFO" | grep -i nvidia)"
-
-  # Secure Boot se comprueba ANTES de instalar, para que se sepa de
-  # antemano si hará falta completar el proceso MOK/firma del módulo.
-  SECURE_BOOT_STATE="$(detect_secure_boot)"
-  case "$SECURE_BOOT_STATE" in
-    enabled)
-      SB_NOTE="ATENCIÓN: Secure Boot está ACTIVADO. Tras instalar, el módulo del kernel de NVIDIA no cargará hasta que completes el proceso de firma/MOK (requiere reiniciar y confirmar en el MOK Manager; consulta MANUAL.md)."
-      warn "$SB_NOTE"
-      ;;
-    disabled)
-      SB_NOTE="Secure Boot está desactivado: no hace falta firmar el módulo de NVIDIA."
-      log "$SB_NOTE"
-      ;;
-    noefi)
-      SB_NOTE="Este sistema no arranca en modo UEFI o no soporta Secure Boot: no aplica el proceso de firma MOK."
-      log "$SB_NOTE"
-      ;;
-    *)
-      SB_NOTE="AVISO: no se ha podido determinar el estado de Secure Boot. Si lo tienes activado, tras instalar puede hacer falta completar el proceso de firma/MOK (consulta MANUAL.md)."
-      warn "$SB_NOTE"
-      ;;
-  esac
-
-  if [[ "$WGET_OK" -ne 1 ]] && ! dpkg -s cuda-keyring >/dev/null 2>&1; then
-    warn "Se ha detectado una GPU NVIDIA, pero falta 'wget' (necesario para añadir el repositorio de NVIDIA) y no se pudo instalar. Se omite el driver NVIDIA."
-  elif confirm "GPU NVIDIA detectada:\n  ${NVIDIA_LINE}\n\nAviso: este paso instala 'nvidia-open', el módulo de kernel de código abierto de NVIDIA, vía el repositorio CUDA oficial de NVIDIA (rama debian13, la combinación usada y probada también en trixie/testing). Solo soporta GPUs Turing en adelante (RTX 20xx, GTX 16xx, RTX 30xx/40xx/50xx...). En una GPU más antigua (GTX 10xx y anteriores) este driver no cargará; en ese caso necesitarías el paquete 'nvidia-driver' (propietario clásico) en su lugar. El script no comprueba el modelo concreto, solo que el fabricante sea NVIDIA.\n\n${SB_NOTE}\n\n¿Instalar el driver NVIDIA (nvidia-open, última versión disponible en el repo)?" 28 76; then
-
-    # --- Repositorio de NVIDIA (cuda-keyring) ---
-    NVIDIA_REPO_READY=0
-    if dpkg -s cuda-keyring >/dev/null 2>&1; then
-      ok "El repositorio de NVIDIA (cuda-keyring) ya está instalado."
-      NVIDIA_REPO_READY=1
-    else
-      log "Añadiendo el repositorio de NVIDIA (cuda-keyring)..."
-      NVIDIA_KEYRING_TMP="$(mktemp --suffix=.deb)"
-      if wget -qO "$NVIDIA_KEYRING_TMP" "$NVIDIA_KEYRING_URL" && [[ -s "$NVIDIA_KEYRING_TMP" ]]; then
-        if sudo dpkg -i "$NVIDIA_KEYRING_TMP"; then
-          NVIDIA_REPO_READY=1
-        else
-          warn "No se pudo instalar cuda-keyring (falló 'dpkg -i')."
-        fi
-      else
-        warn "No se pudo descargar cuda-keyring desde $NVIDIA_KEYRING_URL (¿sin conexión o URL cambiada?)."
-      fi
-      rm -f "$NVIDIA_KEYRING_TMP"
-    fi
-
-    if [[ "$NVIDIA_REPO_READY" -ne 1 ]]; then
-      warn "Se omite la instalación del driver NVIDIA: el repositorio de NVIDIA no está disponible. No se ha tocado nouveau ni GRUB."
-    else
-
-      # Pin de origen para el repo NVIDIA CUDA (mismo patrón que Mozilla en
-      # la sección 7). Sin esto, paquetes como nvidia-driver-libs también
-      # existen de forma nativa en el repo non-free de Debian con una
-      # versión distinta; sin pin explícito, APT podría resolver algún
-      # paquete del stack NVIDIA desde un origen distinto al resto,
-      # mezclando versiones entre el módulo de kernel y las librerías.
-      #
-      # Los comodines 'nvidia-*' / 'libnvidia-*' NO cubren (a) paquetes del
-      # driver con otros nombres (libcuda1, libglx-nvidia0, libegl-nvidia0,
-      # libgles-nvidia*, libnvcuvid1, libnvoptix1, libxnvctrl0,
-      # xserver-xorg-video-nvidia, firmware-nvidia-gsp), ni (b) las variantes
-      # de 32 bits (':i386'): en las pruebas, los comodines no les aplicaron el
-      # pin, así que se nombran explícitamente. Si una versión nueva del
-      # driver renombra alguno de estos paquetes (p. ej. libnvidia-egl-wayland21),
-      # añade aquí el nombre nuevo.
-      log "Fijando el repositorio de NVIDIA como origen preferente para el stack nvidia-*..."
-      sudo tee /etc/apt/preferences.d/nvidia-cuda >/dev/null <<'EOF'
-Package: nvidia-* libnvidia-* libegl-nvidia* libgles-nvidia* libglx-nvidia* libcuda1 libcudadebugger1 libnvcuvid1 libnvoptix1 libxnvctrl0 xserver-xorg-video-nvidia firmware-nvidia-gsp
-Pin: origin developer.download.nvidia.com
-Pin-Priority: 1000
-
-Package: nvidia-driver-libs:i386 nvidia-vulkan-icd:i386 libcuda1:i386 libegl-nvidia0:i386 libgles-nvidia1:i386 libgles-nvidia2:i386 libglx-nvidia0:i386
-Pin: origin developer.download.nvidia.com
-Pin-Priority: 1000
-
-Package: libnvidia-allocator1:i386 libnvidia-egl-gbm1:i386 libnvidia-egl-wayland21:i386 libnvidia-egl-xcb1:i386 libnvidia-egl-xlib1:i386 libnvidia-eglcore:i386 libnvidia-glcore:i386 libnvidia-glvkspirv:i386 libnvidia-gpucomp:i386 libnvidia-ml1:i386 libnvidia-ptxjitcompiler1:i386
-Pin: origin developer.download.nvidia.com
-Pin-Priority: 1000
-EOF
-
-      log "Instalando el driver NVIDIA (sin pinear versión -> se resuelve la más reciente del repo, ahora con origen fijado)..."
-      sudo dpkg --add-architecture i386
-      if ! sudo apt update; then
-        warn "'apt update' terminó con errores; se intenta la instalación con los índices disponibles."
-      fi
-
-      # Si esta instalación falla NO se toca nouveau ni GRUB: bloquear
-      # nouveau sin tener el driver de NVIDIA funcionando dejaría el
-      # sistema sin driver gráfico para esa GPU.
-      if ! sudo apt install -y \
-        linux-headers-amd64 \
-        firmware-misc-nonfree \
-        dkms \
-        nvidia-open \
-        nvidia-kernel-open-dkms \
-        nvidia-settings \
-        libvulkan-dev \
-        nvidia-vulkan-icd \
-        vulkan-tools \
-        vulkan-validationlayers \
-        nvidia-driver-libs:i386 \
-        nvidia-vaapi-driver; then
-        warn "Falló la instalación del driver NVIDIA. No se ha tocado nouveau ni GRUB, para no dejar el sistema sin driver gráfico."
-        warn "Revisa el error de arriba y reintenta: sudo apt install nvidia-open nvidia-kernel-open-dkms nvidia-driver-libs:i386"
-      else
-
-        log "Deshabilitando el driver nouveau..."
-        sudo tee /etc/modprobe.d/blacklist-nouveau.conf >/dev/null <<'EOF'
-blacklist nouveau
-options nouveau modeset=0
-EOF
-
-        # Fichero propio (no se tocan los de los paquetes NVIDIA). Se
-        # sobrescribe entero en cada ejecución, así que no se duplica.
-        # NVreg_PreserveVideoMemoryAllocations=1 hace coherentes los
-        # servicios nvidia-suspend/hibernate/resume que se habilitan más
-        # abajo. NVreg_TemporaryFilePath=/var/tmp se usa para que el volcado
-        # de la VRAM no vaya a /tmp, que en Debian puede ser un tmpfs (RAM).
-        # Ojo: /var/tmp tampoco garantiza por sí solo estar en disco (depende
-        # de cómo esté montado), y el sistema de archivos que lo contenga
-        # debe tener espacio libre suficiente para volcar la VRAM completa.
-        log "Configurando la preservación de memoria de vídeo para suspensión/hibernación..."
-        sudo tee /etc/modprobe.d/nvidia-preserve-vram.conf >/dev/null <<'EOF'
-options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_TemporaryFilePath=/var/tmp
-EOF
-
-        log "Configurando GRUB para KMS de NVIDIA..."
-        NVIDIA_GRUB_PARAMS=(nvidia-drm.modeset=1 nvidia-drm.fbdev=1)
-        if [[ ! -f /etc/default/grub ]]; then
-          warn "No se encontró /etc/default/grub (¿otro gestor de arranque?); se omite la configuración de GRUB."
-          warn "Añade a mano estos parámetros del kernel en tu gestor de arranque: ${NVIDIA_GRUB_PARAMS[*]}"
-        else
-          NVIDIA_GRUB_BACKUP="/etc/default/grub.bak.$(date +%Y%m%d%H%M%S)"
-          sudo cp /etc/default/grub "$NVIDIA_GRUB_BACKUP"
-          ok "Copia de seguridad: $NVIDIA_GRUB_BACKUP"
-
-          CURRENT_CMDLINE="$(grep -oP '^GRUB_CMDLINE_LINUX_DEFAULT="\K[^"]*' /etc/default/grub || true)"
-
-          NEW_CMDLINE="$CURRENT_CMDLINE"
-          for param in "${NVIDIA_GRUB_PARAMS[@]}"; do
-            key="${param%%=*}"
-            if [[ "$NEW_CMDLINE" != *"$key"* ]]; then
-              NEW_CMDLINE="${NEW_CMDLINE:+$NEW_CMDLINE }${param}"
-            fi
-          done
-
-          if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
-            sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"${NEW_CMDLINE}\"|" /etc/default/grub
-          else
-            echo "GRUB_CMDLINE_LINUX_DEFAULT=\"${NEW_CMDLINE}\"" | sudo tee -a /etc/default/grub >/dev/null
-          fi
-          ok "GRUB_CMDLINE_LINUX_DEFAULT resultante: ${NEW_CMDLINE}"
-
-          # command -v no alcanza aquí: update-grub vive en /usr/sbin, que
-          # no está en el $PATH de un usuario normal en Debian (solo en el
-          # de root/sudo). Por eso se comprueba también la ruta directa.
-          if command -v update-grub >/dev/null 2>&1 || [[ -x /usr/sbin/update-grub ]]; then
-            sudo update-grub || warn "update-grub ha fallado; revisa la configuración de GRUB y ejecútalo a mano: sudo update-grub"
-          else
-            warn "No se encontró 'update-grub'; regenera la configuración de GRUB manualmente."
-          fi
-        fi
-
-        # "-k all": el blacklist de nouveau y las opciones de modprobe
-        # quedan en los initramfs de TODOS los kernels instalados, no solo
-        # del que está en ejecución. Un error puntual (p. ej. un kernel
-        # sin /lib/modules) no debe abortar todo el script.
-        sudo update-initramfs -u -k all \
-          || warn "update-initramfs devolvió un error en algún kernel; revisa la salida de arriba. Puedes reintentarlo con: sudo update-initramfs -u -k all"
-
-        log "Habilitando servicios de suspensión/hibernación de NVIDIA..."
-        for svc in nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service; do
-          if sudo systemctl enable "$svc" 2>/dev/null; then
-            ok "Servicio habilitado: $svc"
-          else
-            warn "Servicio $svc no disponible en este empaquetado del driver, se omite."
-          fi
-        done
-
-        NVIDIA_INSTALLED=1
-
-        if [[ "$SECURE_BOOT_STATE" == "enabled" ]]; then
-          warn "Secure Boot está ACTIVADO en este sistema."
-          warn "El módulo del kernel de NVIDIA no cargará hasta que firmes la clave MOK."
-          warn "Este paso es manual (requiere reiniciar y confirmar en el MOK Manager)."
-          warn "Consulta la sección 'Secure Boot / NVIDIA' en MANUAL.md ANTES de reiniciar."
-        elif [[ "$SECURE_BOOT_STATE" == "unknown" ]]; then
-          warn "No se pudo determinar el estado de Secure Boot. Si lo tienes activado, consulta la sección 'Secure Boot / NVIDIA' en MANUAL.md ANTES de reiniciar."
-        fi
-      fi
-    fi
-  else
-    warn "Se omite la instalación del driver NVIDIA."
-  fi
-fi
+#   git clone https://github.com/csr79a/nvidia-debian-sid.git
+#   cd nvidia-debian-sid
+#   ./setup-nvidia-debian-sid.sh
 
 # ----------------------------------------------------------------------
-# 9. switcheroo-control (gestión de GPU híbrida, opcional)
-# ----------------------------------------------------------------------
-
-GPU_COUNT="$(echo "$GPU_INFO" | grep -c . || true)"
-
-if [[ "$GPU_COUNT" -ge 2 ]]; then
-  GPU_LIST="$(echo "$GPU_INFO" | sed 's/^/  /')"
-  if confirm "Se han detectado $GPU_COUNT controladores de vídeo (GPU híbrida: integrada + dedicada):\n\n${GPU_LIST}\n\n¿Instalar switcheroo-control para gestionar el cambio de GPU?" 18 76; then
-    SWITCHEROO_OK=1
-    if dpkg -s switcheroo-control >/dev/null 2>&1; then
-      ok "switcheroo-control ya está instalado."
-    elif ! sudo apt install -y switcheroo-control; then
-      warn "No se pudo instalar switcheroo-control. Reintenta luego con: sudo apt install switcheroo-control"
-      SWITCHEROO_OK=0
-    fi
-
-    if [[ "$SWITCHEROO_OK" -eq 1 ]]; then
-      if sudo systemctl enable --now switcheroo-control; then
-        ok "switcheroo-control instalado y activo. Comprueba las GPUs detectadas con: switcherooctl list"
-        SWITCHEROO_INSTALLED=1
-      else
-        warn "No se pudo habilitar/arrancar switcheroo-control. Reintenta luego con: sudo systemctl enable --now switcheroo-control"
-      fi
-    fi
-
-    # --- Wrapper nvidia-run (variables de PRIME offload) ---
-    # Mismas variables que usa el paquete oficial "nvidia-prime" de
-    # Arch/CachyOS (prime-run) y que coinciden con el Environment: que
-    # reporta "switcherooctl list" para el dispositivo NVIDIA discreto.
-    # Deliberadamente NO se exportan de forma global (en /etc/environment
-    # o similar): eso forzaría la NVIDIA para todo el sistema y anularía
-    # el ahorro de batería del offloading selectivo.
-    if [[ "${NVIDIA_INSTALLED:-0}" -eq 1 ]]; then
-      if confirm "¿Crear el comando 'nvidia-run' para lanzar aplicaciones puntuales forzando la GPU NVIDIA (PRIME render offload)?\n\nEjemplo de uso: nvidia-run glxgears" 12 76; then
-        log "Creando wrapper nvidia-run en /usr/local/bin..."
-        sudo tee /usr/local/bin/nvidia-run >/dev/null <<'EOF'
-#!/usr/bin/env bash
-# nvidia-run — lanza un comando forzando el offload a la GPU NVIDIA
-# (PRIME render offload). Generado por setup-debian-sid.sh.
-set -euo pipefail
-if [[ $# -eq 0 ]]; then
-  echo "Uso: nvidia-run <comando> [args...]" >&2
-  exit 1
-fi
-export __NV_PRIME_RENDER_OFFLOAD=1
-export __GLX_VENDOR_LIBRARY_NAME=nvidia
-export __VK_LAYER_NV_optimus=NVIDIA_only
-exec "$@"
-EOF
-        sudo chmod +x /usr/local/bin/nvidia-run
-        ok "nvidia-run creado. Prueba con: nvidia-run glxinfo | grep 'OpenGL renderer'"
-        NVIDIA_RUN_INSTALLED=1
-      fi
-    fi
-  else
-    warn "Se omite la instalación de switcheroo-control."
-  fi
-fi
-
-# ----------------------------------------------------------------------
-# 10. Resumen final
+# 9. Resumen final
 # ----------------------------------------------------------------------
 
 cat <<EOF
@@ -1232,37 +917,13 @@ if [[ "${ESR_PROFILES_REMOVED:-0}" -eq 1 ]]; then
 EOF
 fi
 
-if [[ "${NVIDIA_INSTALLED:-0}" -eq 1 ]]; then
+if lspci 2>/dev/null | grep -qi nvidia; then
   cat <<'EOF'
 
-  - Driver NVIDIA instalado (nvidia-open, última versión del repo),
-    junto con librerías de 32 bits (nvidia-driver-libs:i386, para
-    Steam/Proton) y nvidia-vaapi-driver (aceleración de vídeo por
-    hardware en navegadores). El repo NVIDIA CUDA (rama debian13) se
-    fijó como origen preferente para todo el stack nvidia-*/libnvidia-*
-    (ver /etc/apt/preferences.d/nvidia-cuda).
-    Reinicia para que cargue el nuevo driver. Si tienes Secure Boot
-    activado, no reinicies sin antes seguir la sección 'Secure Boot /
-    NVIDIA' de MANUAL.md (enrollment de la clave MOK).
-    Verifica tras reiniciar con: nvidia-smi
-EOF
-fi
-
-if [[ "${SWITCHEROO_INSTALLED:-0}" -eq 1 ]]; then
-  cat <<'EOF'
-
-  - switcheroo-control instalado y activo (gestión de GPU híbrida).
-    Comprueba las GPUs detectadas con: switcherooctl list
-EOF
-fi
-
-if [[ "${NVIDIA_RUN_INSTALLED:-0}" -eq 1 ]]; then
-  cat <<'EOF'
-
-  - Comando 'nvidia-run' creado en /usr/local/bin. Úsalo para forzar
-    una app puntual a la GPU NVIDIA sin cambiar el comportamiento del
-    resto del sistema, p. ej.: nvidia-run glxgears
-    En Steam: nvidia-run %command% como parámetro de lanzamiento.
+  - Se ha detectado una GPU NVIDIA, pero este script ya NO instala su
+    driver: usa setup-nvidia-debian-sid.sh (proyecto aparte, también
+    disponible en el lanzador) para el driver, switcheroo-control y
+    el wrapper nvidia-run.
 EOF
 fi
 
@@ -1299,15 +960,5 @@ fi
 echo "Detalles completos de cada paso en MANUAL.md."
 
 if [[ "$ASSUME_YES" -ne 1 ]]; then
-  if [[ "${NVIDIA_INSTALLED:-0}" -eq 1 ]]; then
-    if whiptail --title "$TITLE" \
-        --yes-button "Reiniciar ahora" --no-button "Reiniciar después" \
-        --yesno "Instalación completada.\n\nSe instaló el driver NVIDIA: hace falta reiniciar para que cargue.\n\n¿Reiniciar ahora?" 14 70; then
-      sudo reboot
-    else
-      ok "Recuerda reiniciar manualmente para que el driver NVIDIA entre en uso."
-    fi
-  else
-    whiptail --title "$TITLE" --msgbox "Instalación completada.\n\nRevisa el resumen impreso en la terminal para los detalles y próximos pasos." 12 70
-  fi
+  whiptail --title "$TITLE" --msgbox "Instalación completada.\n\nRevisa el resumen impreso en la terminal para los detalles y próximos pasos." 12 70
 fi

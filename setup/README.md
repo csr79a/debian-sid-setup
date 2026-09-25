@@ -4,16 +4,21 @@ Configura un sistema **Debian Unstable (Sid)** recién instalado con KDE
 Plasma: repositorios en formato deb822 apuntando a `unstable`,
 actualización del sistema, un set de paquetes de desarrollo/multimedia/
 sistema/utilidades de disco/OCR, microcode de CPU, fuentes de Windows y
-de Ubuntu, Flathub, zram y, de forma opcional según lo que confirmes o
-detecte el hardware: Firefox oficial de Mozilla, el driver NVIDIA y
-`switcheroo-control`. Es el complemento de `cleanup-debian-sid.sh`: este
-script instala, aquel quita.
+de Ubuntu, Flathub, zram y, de forma opcional, Firefox oficial de
+Mozilla. Es el complemento de `cleanup-debian-sid.sh`: este script
+instala, aquel quita.
+
+> **Desde la 1.4.0:** el driver NVIDIA, `switcheroo-control` (GPU
+> híbrida) y el wrapper `nvidia-run` ya no viven aquí — se movieron a un
+> proyecto aparte,
+> [`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid). Ver
+> [Driver NVIDIA (proyecto aparte)](#driver-nvidia-proyecto-aparte).
 
 > Este script **no instala Debian** ni migra un sistema de stable a Sid.
 > Asume que ya tienes un Debian funcionando con los repos apuntando a
 > unstable.
 
-Versión documentada: **1.3.0**.
+Versión documentada: **1.4.0**.
 
 ---
 
@@ -30,8 +35,7 @@ Versión documentada: **1.3.0**.
 - [Flathub](#flathub)
 - [Zram automático](#zram-automático)
 - [Firefox oficial de Mozilla (opcional)](#firefox-oficial-de-mozilla-opcional)
-- [Driver NVIDIA (opcional)](#driver-nvidia-opcional)
-- [switcheroo-control (GPU híbrida, opcional)](#switcheroo-control-gpu-híbrida-opcional)
+- [Driver NVIDIA (proyecto aparte)](#driver-nvidia-proyecto-aparte)
 - [Idempotencia](#idempotencia)
 - [Licencia](#licencia)
 
@@ -73,12 +77,9 @@ según tu RAM, y opcionalmente ajustar `vm.swappiness`.
 12. Opcionalmente, sustituye Firefox ESR por el Firefox oficial de
 Mozilla, verificando la huella digital de su clave GPG. **Elimina
 Firefox ESR y todos sus perfiles y datos.**
-13. Si detecta una GPU NVIDIA por `lspci`, ofrece instalar el driver
-`nvidia-open` desde el repositorio oficial CUDA de NVIDIA.
-14. Si detecta 2 o más controladores de vídeo (GPU híbrida), ofrece
-instalar y activar `switcheroo-control`.
-15. Imprime un resumen con notas y avisos. En modo interactivo, si se
-instaló el driver NVIDIA, pregunta si quieres reiniciar ahora.
+13. Imprime un resumen con notas y avisos. Si detecta una GPU NVIDIA por
+`lspci`, no instala nada: solo te avisa de que uses el proyecto aparte
+`nvidia-debian-sid` (ver [Driver NVIDIA (proyecto aparte)](#driver-nvidia-proyecto-aparte)).
 
 ## Uso
 
@@ -108,8 +109,7 @@ avisa al arrancar. En concreto:
 seguridad previa);
 - eliminar Firefox ESR, `/etc/firefox-esr` y **todos** sus perfiles y datos
 (`~/.mozilla/firefox`), de forma **irreversible**;
-- modificar GRUB, initramfs y otras configuraciones del sistema (NVIDIA,
-zram, sysctl...);
+- configurar zram y ajustar `vm.swappiness` (sysctl);
 - aceptar automáticamente la licencia (EULA) de las fuentes de Windows.
 
 Además, `-y` exporta `DEBIAN_FRONTEND=noninteractive`, lo que silencia
@@ -330,87 +330,45 @@ conservan datos de ESR.
 > con esa carpeta y hay que forzar a AutoFirma a reinyectarlo con
 > `sudo apt reinstall autofirma`.
 
-## Driver NVIDIA (opcional)
+## Driver NVIDIA (proyecto aparte)
 
-Se activa solo si `lspci` detecta una GPU NVIDIA. Usa el mismo
-repositorio CUDA oficial de NVIDIA (rama `debian13`, vía `cuda-keyring`)
-que las versiones trixie y testing de este proyecto — NVIDIA no publica
-una rama dedicada para Sid, pero `debian13` es la combinación ya probada
-y en uso. Necesita `wget` para añadir el repositorio.
+Este script ya **no** instala el driver NVIDIA, `switcheroo-control`
+(GPU híbrida) ni el wrapper `nvidia-run`: se movieron a un proyecto
+aparte,
+[`nvidia-debian-sid`](https://github.com/csr79a/nvidia-debian-sid),
+disponible también como acción propia en el lanzador
+(`lanzador-debian-sid`). Si `lspci` detecta una GPU NVIDIA, el resumen
+final de este script solo te lo recuerda; no instala nada por ti.
 
-**Antes de preguntar**, el script comprueba el estado de Secure Boot
-(con `mokutil` si está instalado, o leyendo la variable EFI
-directamente) y te lo muestra en la pantalla de confirmación:
-activado, desactivado, sistema sin UEFI, o desconocido.
+Para instalarlo:
 
-Qué hace si aceptas:
+```
+git clone https://github.com/csr79a/nvidia-debian-sid.git
+cd nvidia-debian-sid
+./setup-nvidia-debian-sid.sh
+```
 
-1. Instala `cuda-keyring` (si no lo estaba).
-2. Fija el repositorio NVIDIA CUDA como origen preferente
-(`/etc/apt/preferences.d/nvidia-cuda`, prioridad 1000) para el stack
-`nvidia-*`/`libnvidia-*` y los paquetes con otros nombres (`libcuda1`,
-`libglx-nvidia0`, `libegl-nvidia0`, `xserver-xorg-video-nvidia`,
-`firmware-nvidia-gsp`...), incluidas las variantes `:i386` nombradas
-explícitamente (los comodines no las cubren). Así APT no mezcla
-versiones con los paquetes nativos de Debian del mismo stack.
-3. Habilita la arquitectura `i386` y ejecuta `apt update`.
-4. Instala `linux-headers-amd64`, `firmware-misc-nonfree`, `dkms`,
-`nvidia-open`, `nvidia-kernel-open-dkms`, `nvidia-settings`,
-`libvulkan-dev`, `nvidia-vulkan-icd`, `vulkan-tools`,
-`vulkan-validationlayers`, las librerías de 32 bits
-`nvidia-driver-libs:i386` (para Steam/Proton) y `nvidia-vaapi-driver`
-(aceleración de vídeo por hardware en navegadores).
-
-**Solo si esa instalación termina bien**, además:
-
-- Deshabilita el driver `nouveau` (`/etc/modprobe.d/blacklist-nouveau.conf`).
-- Configura la preservación de memoria de vídeo para suspensión/
-hibernación (`/etc/modprobe.d/nvidia-preserve-vram.conf`, con volcado
-en `/var/tmp`, que debe tener espacio libre suficiente para la VRAM).
-- Configura GRUB para KMS de NVIDIA (`nvidia-drm.modeset=1`,
-`nvidia-drm.fbdev=1`), con copia de seguridad de `/etc/default/grub`
-antes de tocarlo, y ejecuta `update-grub`. Si no existe
-`/etc/default/grub`, te indica los parámetros para añadir a mano en tu
-gestor de arranque.
-- Regenera los initramfs de todos los kernels (`update-initramfs -u -k all`).
-- Habilita los servicios `nvidia-suspend`, `nvidia-hibernate` y
-`nvidia-resume` si el empaquetado los trae.
-
-Si la instalación del driver falla, no se toca `nouveau` ni GRUB, para no
-dejar el sistema sin driver gráfico. Al terminar, en modo interactivo el
-script pregunta si quieres reiniciar ahora.
-
-> **Limitación conocida:** `nvidia-open` solo soporta GPUs Turing en
-> adelante (RTX 20xx, GTX 16xx, y más recientes). El script no
-> distingue el modelo concreto, solo detecta "es NVIDIA" — en una GPU
-> más antigua (GTX 10xx o anterior) este driver no cargará.
-
-> **Secure Boot:** si está activado, el módulo de kernel de NVIDIA no
-> cargará hasta que firmes la clave MOK manualmente (requiere reiniciar
-> y confirmar en el MOK Manager). El script detecta y avisa, pero este
-> paso queda deliberadamente **fuera** del script — ver la sección
-> "Secure Boot / NVIDIA" en `MANUAL.md`.
-
-## switcheroo-control (GPU híbrida, opcional)
-
-Se activa solo si `lspci` detecta 2 o más controladores de vídeo
-(integrada + dedicada). Instala y habilita el servicio
-`switcheroo-control`, necesario para que el escritorio gestione el
-cambio entre GPUs. Comprueba las GPUs detectadas con `switcherooctl list`
-una vez instalado.
+Ese proyecto usa el mismo repositorio CUDA oficial de NVIDIA (rama
+`debian13`, vía `cuda-keyring`) que las versiones trixie y testing de
+`debian-sid-setup`, configura GRUB para KMS, comprueba el estado de
+Secure Boot antes de preguntar y avisa si hace falta enrolar la clave
+MOK manualmente. Consulta su propio README/MANUAL para el detalle
+completo, o la sección "Secure Boot / NVIDIA" de `MANUAL.md` en este
+proyecto para los pasos de MOK.
 
 ## Idempotencia
 
 El script se puede volver a ejecutar sin duplicar trabajo:
 
 - No sobrescribe `/etc/apt/sources.list.d/debian.sources` si ya existe.
-- Comprueba si Flathub o `cuda-keyring` ya están configurados antes de
-añadirlos. Los ficheros del repositorio de Mozilla, los pines de APT y
-los de configuración de NVIDIA se reescriben enteros con el mismo
-contenido, así que no se duplican.
-- Detecta si `zram-tools`, `switcheroo-control` o Firefox ESR ya están
-en el estado esperado; en particular, si ESR ya no está instalado, no
-se borra ningún perfil de Firefox.
+- Comprueba si Flathub ya está configurado antes de añadirlo. Los
+ficheros del repositorio de Mozilla y sus pines de APT se reescriben
+enteros con el mismo contenido, así que no se duplican.
+- Detecta si `zram-tools` o Firefox ESR ya están en el estado esperado;
+en particular, si ESR ya no está instalado, no se borra ningún perfil
+de Firefox.
+- La idempotencia de `cuda-keyring` y `switcheroo-control` ahora vive en
+el proyecto aparte `nvidia-debian-sid`.
 
 ## Licencia
 
