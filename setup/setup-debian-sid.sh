@@ -423,57 +423,45 @@ fi
 
 # Dos arrays paralelos (los índices deben corresponderse 1 a 1): nombre
 # descriptivo del grupo y string con sus paquetes separados por espacio.
-GROUP_NAMES=(
-  "Control de versiones / descargas"
-  "Compresión"
-  "Sistema / diagnóstico"
-  "Utilidades de disco"
-  "Desarrollo / compilación"
-  "Multimedia"
-  "Firmware"
-  "Gestión de paquetes (GUI)"
-  "Flatpak + integración KDE"
-  "OCR (extracción de texto de capturas)"
-)
-
-GROUP_PACKAGES=(
-  "git git-lfs curl wget"
-  "${ARCHIVE_PACKAGES[*]}"
-  "btop fastfetch tree jq ripgrep fd-find pciutils usbutils lshw dmidecode inxi hwinfo lm-sensors acpi"
-  "gnome-disk-utility"
-  "build-essential gcc g++ make cmake ninja-build pkg-config autoconf automake libtool openssh-client"
-  "ffmpeg gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly pavucontrol"
-  "firmware-linux"
-  "synaptic"
-  "flatpak plasma-discover-backend-flatpak"
+PACKAGE_GROUPS=(
+  "Control de versiones / descargas|git git-lfs curl wget"
+  "Compresión|${ARCHIVE_PACKAGES[*]}"
+  "Sistema / diagnóstico|btop fastfetch tree jq ripgrep fd-find pciutils usbutils lshw dmidecode inxi hwinfo lm-sensors acpi"
+  "Utilidades de disco|gnome-disk-utility"
+  "Desarrollo / compilación|build-essential gcc g++ make cmake ninja-build pkg-config autoconf automake libtool openssh-client"
+  "Multimedia|ffmpeg gstreamer1.0-libav gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly pavucontrol"
+  "Firmware|firmware-linux"
+  "Gestión de paquetes (GUI)|synaptic"
+  "Flatpak + integración KDE|flatpak plasma-discover-backend-flatpak"
   # OCR para extraer texto de las capturas de pantalla (Spectacle):
   # motor Tesseract con datos de inglés, español y detección de orientación.
-  "tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa tesseract-ocr-osd"
+  "OCR (extracción de texto de capturas de pantalla)|tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa tesseract-ocr-osd"
 )
 
 if [[ -n "$MICROCODE_PKG" ]]; then
-  GROUP_NAMES+=("Microcode de CPU")
-  GROUP_PACKAGES+=("$MICROCODE_PKG")
+  PACKAGE_GROUPS+=("Microcode de CPU|$MICROCODE_PKG")
 fi
 
 # Solo para mostrar el listado completo al usuario antes de confirmar.
 ALL_PACKAGES=()
-for pkgs in "${GROUP_PACKAGES[@]}"; do
+for group in "${PACKAGE_GROUPS[@]}"; do
+  group_pkgs_str="${group#*|}"
   # shellcheck disable=SC2206
-  ALL_PACKAGES+=($pkgs)
+  ALL_PACKAGES+=($group_pkgs_str)
 done
 
 echo
-echo "Se van a instalar los siguientes paquetes (agrupados en ${#GROUP_NAMES[@]} bloques):"
+echo "Se van a instalar los siguientes paquetes (agrupados en ${#PACKAGE_GROUPS[@]} bloques):"
 printf '  - %s\n' "${ALL_PACKAGES[@]}"
 echo
-confirm "Se van a instalar ${#ALL_PACKAGES[@]} paquetes (desarrollo, multimedia, sistema, utilidades de disco, OCR), en ${#GROUP_NAMES[@]} bloques independientes. Si alguno falla (típico en Sid durante transiciones de paquetes), se avisa y se continúa con el resto en vez de abortar toda la instalación.\n\n¿Continuar con la instalación?" || { warn "Instalación cancelada por el usuario."; exit 0; }
+confirm "Se van a instalar ${#ALL_PACKAGES[@]} paquetes (desarrollo, multimedia, sistema, utilidades de disco, OCR), en ${#PACKAGE_GROUPS[@]} bloques independientes. Si alguno falla (típico en Sid durante transiciones de paquetes), se avisa y se continúa con el resto en vez de abortar toda la instalación.\n\n¿Continuar con la instalación?" || { warn "Instalación cancelada por el usuario."; exit 0; }
 
 FAILED_GROUPS=()
-for i in "${!GROUP_NAMES[@]}"; do
-  group_name="${GROUP_NAMES[$i]}"
+for group in "${PACKAGE_GROUPS[@]}"; do
+  group_name="${group%%|*}"
+  group_pkgs_str="${group#*|}"
   # shellcheck disable=SC2206
-  group_pkgs=(${GROUP_PACKAGES[$i]})
+  group_pkgs=($group_pkgs_str)
   log "Instalando (${group_name}): ${group_pkgs[*]}"
   if sudo apt install -y "${group_pkgs[@]}"; then
     ok "${group_name}: instalado correctamente."
@@ -657,7 +645,7 @@ fi
 # Debian, incluso en Sid, solo empaqueta "firefox-esr" en su archivo
 # oficial (no distribuye la versión release por su política de marca).
 # En Sid siempre se usa el formato deb822 (no hace falta la rama de
-# compatibilidad con bookworm/bullseye de la versión trixie de este
+# compatibilidad con bookworm/bullseye de la versión testing de este
 # proyecto).
 #
 # NOTA sobre la migración: el objetivo es quedarse SOLO con Firefox de
@@ -679,14 +667,14 @@ MOZILLA_PROFILES_DIR="$HOME/.mozilla/firefox"
 ESR_PROFILES_REMOVED=0
 ESR_PURGE_FAILED=0
 FIREFOX_INSTALL_FAILED=0
-FIREFOX_REQUESTED=0
+MOZILLA_STEP_ATTEMPTED=0
 MOZILLA_KEY_OK=0
 
 if [[ "$WGET_OK" -ne 1 ]]; then
   warn "Falta 'wget' (necesario para descargar la clave de Mozilla) y no se pudo instalar. Se omite la sustitución de Firefox."
 elif confirm "¿Sustituir Firefox ESR de Debian por Firefox oficial del repositorio de Mozilla?\n\nAVISO: si Firefox ESR está instalado, se eliminarán también su configuración (/etc/firefox-esr) y TODOS sus perfiles y datos en ~/.mozilla/firefox (marcadores, contraseñas, historial, extensiones). Es irreversible. Firefox normal empezará con un perfil limpio." 18 76; then
 
-  FIREFOX_REQUESTED=1
+  MOZILLA_STEP_ATTEMPTED=1
   FIREFOX_ESR_PKGS=()
   for pkg in firefox-esr firefox-esr-l10n-es; do
     if dpkg -s "$pkg" >/dev/null 2>&1; then
@@ -890,8 +878,6 @@ Notas generales:
     Tesseract (inglés, español y detección de orientación). Comprueba
     los idiomas disponibles con: tesseract --list-langs
 
-
-
   - Si instalaste Firefox desde el repositorio de Mozilla, comprueba
     la versión con: firefox --version (debería ser una versión release,
     no "esr" en el nombre).
@@ -953,7 +939,12 @@ if [[ "${ESR_PURGE_FAILED:-0}" -eq 1 ]]; then
   echo "      sudo apt purge firefox-esr firefox-esr-l10n-es"
 fi
 
-if [[ "${FIREFOX_REQUESTED:-0}" -eq 1 && "${MOZILLA_KEY_OK:-0}" -ne 1 ]]; then
+if [[ "${WGET_OK:-0}" -eq 0 ]]; then
+  echo
+  echo "  - ATENCIÓN: 'wget' no está disponible. La sustitución opcional por Firefox de Mozilla no pudo realizarse."
+fi
+
+if [[ "${MOZILLA_STEP_ATTEMPTED:-0}" -eq 1 && "${MOZILLA_KEY_OK:-0}" -ne 1 ]]; then
   echo
   echo "  - ATENCIÓN: no se pudo verificar correctamente la clave de Mozilla; no se instaló Firefox de Mozilla ni se tocó Firefox ESR."
 fi
