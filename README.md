@@ -13,9 +13,9 @@ adaptado a las particularidades de Sid (repos `unstable`, sin `-security` ni `-b
 > Debian apunta a otra suite (trixie, testing, stable...), `setup-debian-sid.sh`
 > se detiene: no convierte suites automáticamente.
 
-Versiones documentadas: `setup-debian-sid.sh` 1.4.0 y `cleanup-debian-sid.sh` 1.1.0.
+Versiones documentadas: `setup-debian-sid.sh` 1.4.1 y `cleanup-debian-sid.sh` 1.1.0.
 
-> **Novedad en 1.4.0:** el driver NVIDIA, `switcheroo-control` (GPU
+> **Novedad en 1.4.1:** el driver NVIDIA, `switcheroo-control` (GPU
 > híbrida) y el wrapper `nvidia-run` ya no viven en este script: se han
 > movido a un proyecto aparte,
 > [`nvidia-debian-setup`](https://github.com/csr79a/nvidia-debian-setup).
