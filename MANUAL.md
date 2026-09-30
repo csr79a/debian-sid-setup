@@ -13,13 +13,13 @@ que no usas. Ver `cleanup/README.md` para el detalle de qué elimina.
 
 No hace falta que sepas bash para seguir estos pasos.
 
-Versiones documentadas: `setup-debian-sid.sh` 1.4.0 y `cleanup-debian-sid.sh` 1.1.0.
+Versiones documentadas: `setup-debian-sid.sh` 1.4.1 y `cleanup-debian-sid.sh` 1.1.0.
 
-> **Novedad en 1.4.0:** el driver NVIDIA, `switcheroo-control` (GPU
+> **Novedad en 1.4.1:** el driver NVIDIA, `switcheroo-control` (GPU
 > híbrida) y el wrapper `nvidia-run` ya no forman parte de
 > `setup-debian-sid.sh`: se instalan aparte con
-> [`setup-nvidia-debian-sid`](https://github.com/csr79a/setup-nvidia-debian-sid) (su
-> propio `setup-nvidia-debian-sid.sh`). La sección 6 de este manual
+> [`nvidia-debian-setup`](https://github.com/csr79a/nvidia-debian-setup) (su
+> propio `nvidia-debian-setup.sh`). La sección 6 de este manual
 > (Secure Boot / NVIDIA) se refiere a ese proyecto aparte, no a este.
 
 > **Antes de usar este proyecto:** estos scripts asumen que ya tienes un
@@ -181,7 +181,7 @@ datos (`~/.mozilla/firefox`), sin vuelta atrás;
 silenciar todos los avisos de `debconf` durante las instalaciones.
 
 (GRUB, initramfs y el resto de configuración de NVIDIA ya no los toca
-este script — viven en `setup-nvidia-debian-sid.sh`, ver sección 6.)
+este script — viven en `nvidia-debian-setup.sh`, ver sección 6.)
 
 En `cleanup-debian-sid.sh`, `-y` confirma todos los grupos, sin mostrar
 los avisos de las pantallas (por ejemplo, el de KDE Partition Manager
@@ -277,22 +277,24 @@ sudo apt reinstall autofirma
 
 ## 6. Secure Boot / NVIDIA (proyecto aparte)
 
+**Importante:** esta sección describe pasos del proyecto `nvidia-debian-setup`; `setup-debian-sid.sh` no registra claves MOK, no ejecuta `mokutil --import` y no completa el enrolado de la clave en el firmware por ti.
+
 `setup-debian-sid.sh` ya **no** instala el driver NVIDIA: si el script
 detecta una GPU NVIDIA por `lspci`, solo te lo indica en el resumen final
 y te remite al proyecto aparte
-[`setup-nvidia-debian-sid`](https://github.com/csr79a/setup-nvidia-debian-sid):
+[`nvidia-debian-setup`](https://github.com/csr79a/nvidia-debian-setup):
 
 ```
-git clone https://github.com/csr79a/setup-nvidia-debian-sid.git
-cd setup-nvidia-debian-sid
-./setup-nvidia-debian-sid.sh
+git clone https://github.com/csr79a/nvidia-debian-setup.git
+cd nvidia-debian-setup
+./nvidia-debian-setup.sh
 ```
 
 Esa sección de este manual queda aquí porque el paso de Secure Boot/MOK
 que describe sigue siendo necesario cuando uses ese otro script, no
 porque `setup-debian-sid.sh` lo haga por ti.
 
-Si aceptas instalar el driver con `setup-nvidia-debian-sid.sh`, ese
+Si aceptas instalar el driver con `nvidia-debian-setup.sh`, ese
 script instala `nvidia-open` y configura GRUB para KMS automáticamente.
 Antes de preguntarte, comprueba el estado de Secure Boot y te lo muestra
 en la propia pantalla de confirmación (activado, desactivado, sistema
@@ -339,7 +341,7 @@ mokutil --sb-state
 ```
 
 Al terminar la instalación de NVIDIA, en modo interactivo
-`setup-nvidia-debian-sid.sh` te pregunta si quieres reiniciar ahora. Si
+`nvidia-debian-setup.sh` te pregunta si quieres reiniciar ahora. Si
 tienes Secure Boot activado, elige "Reiniciar después" y completa antes
 el paso 2 de arriba.
 
@@ -355,7 +357,7 @@ principio de este manual).
 consistentes.
 4. Si usas AutoFirma, instálalo/reinstálalo **después** de este paso
 (ver sección 5).
-5. Si tienes GPU NVIDIA, ejecuta `setup-nvidia-debian-sid.sh` (proyecto
+5. Si tienes GPU NVIDIA, ejecuta `nvidia-debian-setup.sh` (proyecto
 aparte, ver sección 6) y, si tienes Secure Boot activado, completa el
 enrolado de la clave MOK antes de dar por terminada la instalación.
 6. Cuando lleves un tiempo usando el sistema y tengas claro qué apps de
@@ -384,7 +386,7 @@ es el borrado de Firefox ESR y de `~/.mozilla/firefox` (sección 5 de
 este manual), que ocurre si confirmas esa pantalla o si usas `-y`. Los
 cambios en `/etc/apt/sources.list` y `/etc/default/zramswap` sí dejan
 una copia de seguridad con la fecha en el nombre (`/etc/default/grub`
-solo lo toca `setup-nvidia-debian-sid.sh`, sección 6).
+solo lo toca `nvidia-debian-setup.sh`, sección 6).
 - Ten en cuenta que en Sid, a diferencia de Trixie, no hay un camino
 sencillo de "vuelta atrás" a stable si algo sale realmente mal a nivel
 de sistema — la recuperación normal es restaurar un snapshot/backup
