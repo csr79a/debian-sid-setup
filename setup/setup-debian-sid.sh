@@ -34,7 +34,7 @@
 set -euo pipefail
 
 TITLE="Configurador de Debian Sid csr79a"
-VERSION="1.4.0"
+VERSION="1.4.1"
 
 log()   { echo -e "\e[1;34m[*]\e[0m $*"; }
 ok()    { echo -e "\e[1;32m[OK]\e[0m $*"; }
