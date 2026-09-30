@@ -8,10 +8,10 @@ de Ubuntu, Flathub, zram y, de forma opcional, Firefox oficial de
 Mozilla. Es el complemento de `cleanup-debian-sid.sh`: este script
 instala, aquel quita.
 
-> **Desde la 1.4.0:** el driver NVIDIA, `switcheroo-control` (GPU
+> **Desde la 1.4.1:** el driver NVIDIA, `switcheroo-control` (GPU
 > híbrida) y el wrapper `nvidia-run` ya no viven aquí — se movieron a un
 > proyecto aparte,
-> [`setup-nvidia-debian-sid`](https://github.com/csr79a/setup-nvidia-debian-sid). Ver
+> [`nvidia-debian-setup`](https://github.com/csr79a/nvidia-debian-setup). Ver
 > [Driver NVIDIA (proyecto aparte)](#driver-nvidia-proyecto-aparte).
 
 > Este script **no instala Debian** ni migra un sistema de stable a Sid.
@@ -79,7 +79,7 @@ Mozilla, verificando la huella digital de su clave GPG. **Elimina
 Firefox ESR y todos sus perfiles y datos.**
 13. Imprime un resumen con notas y avisos. Si detecta una GPU NVIDIA por
 `lspci`, no instala nada: solo te avisa de que uses el proyecto aparte
-`setup-nvidia-debian-sid` (ver [Driver NVIDIA (proyecto aparte)](#driver-nvidia-proyecto-aparte)).
+`nvidia-debian-setup` (ver [Driver NVIDIA (proyecto aparte)](#driver-nvidia-proyecto-aparte)).
 
 ## Uso
 
@@ -335,7 +335,7 @@ conservan datos de ESR.
 Este script ya **no** instala el driver NVIDIA, `switcheroo-control`
 (GPU híbrida) ni el wrapper `nvidia-run`: se movieron a un proyecto
 aparte,
-[`setup-nvidia-debian-sid`](https://github.com/csr79a/setup-nvidia-debian-sid),
+[`nvidia-debian-setup`](https://github.com/csr79a/nvidia-debian-setup),
 disponible también como acción propia en el lanzador
 (`lanzador-debian-sid`). Si `lspci` detecta una GPU NVIDIA, el resumen
 final de este script solo te lo recuerda; no instala nada por ti.
@@ -343,9 +343,9 @@ final de este script solo te lo recuerda; no instala nada por ti.
 Para instalarlo:
 
 ```
-git clone https://github.com/csr79a/setup-nvidia-debian-sid.git
-cd setup-nvidia-debian-sid
-./setup-nvidia-debian-sid.sh
+git clone https://github.com/csr79a/nvidia-debian-setup.git
+cd nvidia-debian-setup
+./nvidia-debian-setup.sh
 ```
 
 Ese proyecto usa el mismo repositorio CUDA oficial de NVIDIA (rama
@@ -368,7 +368,7 @@ enteros con el mismo contenido, así que no se duplican.
 en particular, si ESR ya no está instalado, no se borra ningún perfil
 de Firefox.
 - La idempotencia de `cuda-keyring` y `switcheroo-control` ahora vive en
-el proyecto aparte `setup-nvidia-debian-sid`.
+el proyecto aparte `nvidia-debian-setup`.
 
 ## Licencia
 
