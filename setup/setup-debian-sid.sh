@@ -421,8 +421,8 @@ else
   ARCHIVE_PACKAGES=(unzip zip p7zip-full)
 fi
 
-# Dos arrays paralelos (los índices deben corresponderse 1 a 1): nombre
-# descriptivo del grupo y string con sus paquetes separados por espacio.
+# Grupos de paquetes en formato "nombre|paquetes", para mantener el nombre
+# descriptivo y sus paquetes asociados en una sola estructura.
 PACKAGE_GROUPS=(
   "Control de versiones / descargas|git git-lfs curl wget"
   "Compresión|${ARCHIVE_PACKAGES[*]}"
