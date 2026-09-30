@@ -11,7 +11,7 @@
 # hardware) zram y Firefox de Mozilla.
 #
 # El driver NVIDIA, switcheroo-control (GPU híbrida) y el wrapper
-# nvidia-run viven aparte, en setup-nvidia-debian-sid.sh.
+# nvidia-run viven aparte, en setup-nvidia-debian.sh.
 #
 # Interfaz por pantallas (whiptail) para bienvenida, decisiones y
 # resumen final; el progreso de comandos largos (apt, sed, etc.) se
@@ -210,7 +210,7 @@ SOURCES_FILE="$SOURCES_DIR/debian.sources"
 
 # Suites de $SOURCES_FILE que no son unstable ni sid (una por línea).
 sources_file_bad_suites() {
-  awk '/^Suites:/ { for (i = 2; i <= NF; i++) if ($i != "unstable" && $i != "sid") print $i }' "$SOURCES_FILE" | sort -u
+  awk '/^[[:space:]]*Suites:/ { for (i = 2; i <= NF; i++) if ($i != "unstable" && $i != "sid") print $i }' "$SOURCES_FILE" | sort -u
 }
 
 # Líneas activas de $LEGACY_SOURCES que apuntan a un repositorio de Debian
@@ -284,14 +284,14 @@ if [[ -f "$SOURCES_FILE" ]]; then
   # "apt update". Si el fichero ya existente todavía la incluye (de una
   # ejecución anterior de una versión antigua del script), se corrige
   # automáticamente antes de comprobar las suites.
-  if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
+  if grep -qE '^[[:space:]]*Suites:.*unstable-updates' "$SOURCES_FILE"; then
     warn "Se ha detectado el bug conocido de 'unstable-updates' en $SOURCES_FILE."
     SOURCES_BACKUP_DIR="/etc/apt/sources-backups"
     sudo install -d -m 0755 "$SOURCES_BACKUP_DIR"
     SOURCES_BACKUP="${SOURCES_BACKUP_DIR}/debian.sources.bak.$(date +%Y%m%d%H%M%S)"
     sudo cp "$SOURCES_FILE" "$SOURCES_BACKUP"
     ok "Copia de seguridad: $SOURCES_BACKUP"
-    sudo sed -i -E 's/^(Suites:\s*unstable)\s+unstable-updates\s*$/\1/' "$SOURCES_FILE"
+    sudo sed -i -E 's/^([[:space:]]*Suites:\s*unstable)\s+unstable-updates\s*$/\1/' "$SOURCES_FILE"
     if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
       warn "No se ha podido corregir 'unstable-updates' automáticamente en $SOURCES_FILE."
     else
@@ -299,7 +299,7 @@ if [[ -f "$SOURCES_FILE" ]]; then
     fi
   fi
 
-  if [[ -z "$(awk '/^Suites:/ { print $2 }' "$SOURCES_FILE")" ]]; then
+  if [[ -z "$(awk '/^[[:space:]]*Suites:/ { print $2 }' "$SOURCES_FILE")" ]]; then
     error "No se encontró ninguna línea 'Suites:' en $SOURCES_FILE, así que no se puede comprobar que los repositorios apunten a unstable/sid. Revisa el fichero y vuelve a ejecutar el script."
   fi
 
@@ -577,6 +577,7 @@ fi
 # 6. ZRAM (swap comprimido en RAM, tamaño automático según RAM total)
 # ----------------------------------------------------------------------
 
+ZRAM_CONFIGURED=0
 TOTAL_RAM_KB="$(grep -m1 '^MemTotal:' /proc/meminfo | awk '{print $2}')"
 TOTAL_RAM_MB=$(( TOTAL_RAM_KB / 1024 ))
 ZRAM_SIZE_MB=$(( TOTAL_RAM_MB / 2 ))
@@ -622,6 +623,7 @@ else
         fi
 
         ok "Configurado ${SIZE_VAR}=${ZRAM_SIZE_MB} (${ZRAM_SIZE_MB} MiB) en $ZRAM_CONF"
+         ZRAM_CONFIGURED=1
         sudo systemctl restart zramswap.service 2>/dev/null || sudo service zramswap restart \
           || warn "No se pudo reiniciar zramswap; la nueva configuración se aplicará tras reiniciar."
 
@@ -663,8 +665,8 @@ fi
 # El orden es deliberado:
 #   1) se descarga y verifica la clave de Mozilla, se añade su repositorio
 #      y se comprueba que está disponible (pasos no destructivos);
-#   2) solo si todo eso sale bien se elimina ESR con todos sus datos;
-#   3) por último se instala Firefox.
+#   2) solo si todo eso sale bien se instala Firefox normal;
+#   3) solo después de instalar Firefox correctamente se elimina ESR y sus datos.
 # Así, un fallo de red o de verificación no deja el equipo sin navegador
 # ni sin perfil.
 #
@@ -677,11 +679,14 @@ MOZILLA_PROFILES_DIR="$HOME/.mozilla/firefox"
 ESR_PROFILES_REMOVED=0
 ESR_PURGE_FAILED=0
 FIREFOX_INSTALL_FAILED=0
+FIREFOX_REQUESTED=0
+MOZILLA_KEY_OK=0
 
 if [[ "$WGET_OK" -ne 1 ]]; then
   warn "Falta 'wget' (necesario para descargar la clave de Mozilla) y no se pudo instalar. Se omite la sustitución de Firefox."
 elif confirm "¿Sustituir Firefox ESR de Debian por Firefox oficial del repositorio de Mozilla?\n\nAVISO: si Firefox ESR está instalado, se eliminarán también su configuración (/etc/firefox-esr) y TODOS sus perfiles y datos en ~/.mozilla/firefox (marcadores, contraseñas, historial, extensiones). Es irreversible. Firefox normal empezará con un perfil limpio." 18 76; then
 
+  FIREFOX_REQUESTED=1
   FIREFOX_ESR_PKGS=()
   for pkg in firefox-esr firefox-esr-l10n-es; do
     if dpkg -s "$pkg" >/dev/null 2>&1; then
@@ -689,7 +694,6 @@ elif confirm "¿Sustituir Firefox ESR de Debian por Firefox oficial del reposito
     fi
   done
 
-  MOZILLA_KEY_OK=0
   MOZILLA_READY=0
 
   # --- 1) Clave de Mozilla: descarga y verificación de la huella ---
@@ -840,13 +844,13 @@ fi
 # blacklist de nouveau, GRUB, initramfs, servicios de suspensión),
 # switcheroo-control (GPU híbrida) y el wrapper nvidia-run ya NO viven
 # en este script: se movieron a un proyecto aparte,
-# setup-nvidia-debian-sid.sh, disponible también como acción propia en
+# setup-nvidia-debian.sh, disponible también como acción propia en
 # el lanzador (lanzador-debian-sid). Ejecútalo por separado si tienes
 # GPU NVIDIA:
 #
-#   git clone https://github.com/csr79a/setup-nvidia-debian-sid.git
-#   cd setup-nvidia-debian-sid
-#   ./setup-nvidia-debian-sid.sh
+#   git clone https://github.com/csr79a/nvidia-debian-setup.git
+#   cd nvidia-debian-setup
+#   ./setup-nvidia-debian.sh
 
 # ----------------------------------------------------------------------
 # 9. Resumen final
@@ -886,13 +890,7 @@ Notas generales:
     Tesseract (inglés, español y detección de orientación). Comprueba
     los idiomas disponibles con: tesseract --list-langs
 
-  - Si configuraste zram, comprueba su estado con:
-      zramswap status
-      swapon --show
-    El tamaño se calculó automáticamente a partir de tu RAM total
-    (${TOTAL_RAM_MB:-desconocida} MiB detectados -> ${ZRAM_SIZE_MB:-N/A} MiB de zram).
-    Si además ajustaste vm.swappiness, comprueba el valor activo con:
-      sudo sysctl vm.swappiness
+
 
   - Si instalaste Firefox desde el repositorio de Mozilla, comprueba
     la versión con: firefox --version (debería ser una versión release,
@@ -906,6 +904,19 @@ Notas generales:
     original en /etc/apt/sources.list.bak.<fecha> por si quieres
     revisarla o revertir el cambio.
 EOF
+
+if [[ "${ZRAM_CONFIGURED:-0}" -eq 1 ]]; then
+  cat <<EOF
+
+  - Si configuraste zram, comprueba su estado con:
+      zramswap status
+      swapon --show
+    El tamaño se calculó automáticamente a partir de tu RAM total
+    (${TOTAL_RAM_MB:-desconocida} MiB detectados -> ${ZRAM_SIZE_MB:-N/A} MiB de zram).
+    Si además ajustaste vm.swappiness, comprueba el valor activo con:
+      sudo sysctl vm.swappiness
+EOF
+fi
 
 if [[ "${ESR_PROFILES_REMOVED:-0}" -eq 1 ]]; then
   cat <<'EOF'
@@ -921,7 +932,7 @@ if lspci 2>/dev/null | grep -qi nvidia; then
   cat <<'EOF'
 
   - Se ha detectado una GPU NVIDIA, pero este script ya NO instala su
-    driver: usa setup-nvidia-debian-sid.sh (proyecto aparte, también
+    driver: usa setup-nvidia-debian.sh (proyecto aparte, también
     disponible en el lanzador) para el driver, switcheroo-control y
     el wrapper nvidia-run.
 EOF
@@ -942,10 +953,14 @@ if [[ "${ESR_PURGE_FAILED:-0}" -eq 1 ]]; then
   echo "      sudo apt purge firefox-esr firefox-esr-l10n-es"
 fi
 
+if [[ "${FIREFOX_REQUESTED:-0}" -eq 1 && "${MOZILLA_KEY_OK:-0}" -ne 1 ]]; then
+  echo
+  echo "  - ATENCIÓN: no se pudo verificar correctamente la clave de Mozilla; no se instaló Firefox de Mozilla ni se tocó Firefox ESR."
+fi
+
 if [[ "${FIREFOX_INSTALL_FAILED:-0}" -eq 1 ]]; then
   echo
-  echo "  - ATENCIÓN: no se pudo instalar Firefox de Mozilla (Firefox ESR ya se"
-  echo "    había eliminado). Reintenta con:"
+  echo "  - ATENCIÓN: no se pudo instalar Firefox de Mozilla. Firefox ESR y sus perfiles no se han tocado. Reintenta con:"
   echo "      sudo apt update && sudo apt install firefox"
 fi
 
