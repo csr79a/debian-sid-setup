@@ -355,8 +355,8 @@ entrada de repositorios de Debian usa otra suite (ver aviso al
 principio de este manual).
 3. Ejecuta `setup-debian-sid.sh` para partir de repos y paquetes base
 consistentes.
-4. Si usas AutoFirma, instálalo/reinstálalo **después** de este paso
-(ver sección 5).
+4. Si usas AutoFirma, sigue el procedimiento de la sección 5 para instalarlo o
+reinyectarlo tras la sustitución de Firefox.
 5. Si tienes GPU NVIDIA, ejecuta `setup-nvidia-debian.sh` (proyecto
 aparte, ver sección 6) y, si tienes Secure Boot activado, completa el
 enrolado de la clave MOK antes de dar por terminada la instalación.
