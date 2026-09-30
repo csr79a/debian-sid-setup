@@ -256,7 +256,7 @@ other_sources_bad_entries() {
           /^URIs:/ { if (tolower($0) ~ /[\/.]debian\.org(\/|[[:space:]]|$)/) isdeb = 1 }
           /^Signed-By:/ { if ($0 ~ /debian-archive-keyring/) isdeb = 1 }
           /^Enabled:/ { if (tolower($2) == "no" || tolower($2) == "false") enabled = 0 }
-          /^Suites:/ { for (k = 2; k <= NF; k++) suites[++n] = $k }
+          /^[[:space:]]*Suites:/ { for (k = 2; k <= NF; k++) suites[++n] = $k }
           END { flush() }
         ' "$f"
         ;;
@@ -292,7 +292,7 @@ if [[ -f "$SOURCES_FILE" ]]; then
     sudo cp "$SOURCES_FILE" "$SOURCES_BACKUP"
     ok "Copia de seguridad: $SOURCES_BACKUP"
     sudo sed -i -E 's/^([[:space:]]*Suites:\s*unstable)\s+unstable-updates\s*$/\1/' "$SOURCES_FILE"
-    if grep -qE '^Suites:.*unstable-updates' "$SOURCES_FILE"; then
+    if grep -qE '^[[:space:]]*Suites:.*unstable-updates' "$SOURCES_FILE"; then
       warn "No se ha podido corregir 'unstable-updates' automáticamente en $SOURCES_FILE."
     else
       ok "Corregido automáticamente: $SOURCES_FILE ahora solo apunta a 'unstable'."
