@@ -18,7 +18,7 @@ instala, aquel quita.
 > Asume que ya tienes un Debian funcionando con los repos apuntando a
 > unstable.
 
-Versión documentada: **1.4.0**.
+Versión documentada: **1.4.1**.
 
 ---
 
@@ -345,7 +345,7 @@ Para instalarlo:
 ```
 git clone https://github.com/csr79a/nvidia-debian-setup.git
 cd nvidia-debian-setup
-./nvidia-debian-setup.sh
+./setup-nvidia-debian.sh
 ```
 
 Ese proyecto usa el mismo repositorio CUDA oficial de NVIDIA (rama
